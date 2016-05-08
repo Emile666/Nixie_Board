@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Atmel Studio Solution File, Format Version 11.00
+Project("{54F91283-7BC4-4236-8FF9-10F437C3AD48}") = "Nixie", "Nixie\Nixie.cproj", "{F497A0B5-55F8-40BB-93B9-2C8E2E6FC303}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|AVR = Debug|AVR
+		Release|AVR = Release|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F497A0B5-55F8-40BB-93B9-2C8E2E6FC303}.Debug|AVR.ActiveCfg = Debug|AVR
+		{F497A0B5-55F8-40BB-93B9-2C8E2E6FC303}.Debug|AVR.Build.0 = Debug|AVR
+		{F497A0B5-55F8-40BB-93B9-2C8E2E6FC303}.Release|AVR.ActiveCfg = Release|AVR
+		{F497A0B5-55F8-40BB-93B9-2C8E2E6FC303}.Release|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
