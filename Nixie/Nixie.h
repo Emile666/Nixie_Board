@@ -62,4 +62,16 @@
 
 #define NIXIE_CLEAR (10UL)
 
+//------------------------
+// Nixie Decimal Points
+//------------------------
+#define LEFT_DP5  (0x80000000)
+#define LEFT_DP3  (0x40000000)
+#define RIGHT_DP6 (0x20000000)
+#define RIGHT_DP5 (0x10000000)
+#define RIGHT_DP4 (0x08000000)
+#define RIGHT_DP3 (0x04000000)
+#define RIGHT_DP2 (0x02000000)
+#define RIGHT_DP1 (0x01000000)
+
 #endif

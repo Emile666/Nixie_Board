@@ -131,6 +131,12 @@ uint8_t encode_to_bcd(uint8_t x)
 	return retv;
 } // encode_to_bcd()
 
+/*------------------------------------------------------------------------
+  Purpose  : clears one Nixie tube. The 74141/K155ID1 ICs blank for
+             codes > 9. This is used here.
+  Variables: nr: [1..6], the Nixie tube to clear. 1=most left, 6= most right.
+  Returns  : -
+  ------------------------------------------------------------------------*/
 void clear_nixie(uint8_t nr)
 {
 	uint8_t shift;
@@ -153,7 +159,7 @@ void display_task(void)
 
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
-	if ((p.sec >= 25) && (p.sec < 27))
+	if (p.sec == 25)
 	{   // display date & month
 		nixie_bits = encode_to_bcd(p.date);
 		nixie_bits <<= 12;
@@ -163,7 +169,7 @@ void display_task(void)
 		clear_nixie(6);
 		rgb_colour = BLUE;
 	}
-	else if ((p.sec >= 27) && (p.sec < 29))
+	else if (p.sec == 26)
 	{	// display year
 		nixie_bits = encode_to_bcd(p.year / 100);
 		nixie_bits <<= 8;
@@ -181,6 +187,12 @@ void display_task(void)
 		nixie_bits <<= 8; // SHL 8
 		nixie_bits |= encode_to_bcd(p.sec);
 		rgb_colour = BLACK;
+		if (p.sec & 0x01)
+		     nixie_bits |= RIGHT_DP4;
+		else nixie_bits |= LEFT_DP5;
+		if (p.min & 0x01)
+		     nixie_bits |= RIGHT_DP2;
+		else nixie_bits |= LEFT_DP3;
 	} // else
 } // display_task()
 
