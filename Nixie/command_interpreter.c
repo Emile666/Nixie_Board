@@ -21,6 +21,7 @@
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
 extern  uint8_t rgb_colour;
+extern  uint8_t test_nixies;
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -155,6 +156,9 @@ uint8_t execute_single_command(char *s)
 							 break;
 					 case 2: // List all tasks
 							 list_all_tasks(); 
+							 break;
+					 case 3: // test nixies
+					         test_nixies = true;
 							 break;	
 					 default: rval = ERR_NUM;
 							  break;

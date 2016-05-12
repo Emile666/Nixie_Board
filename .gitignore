@@ -16,8 +16,8 @@
 CVS
 *.dll
 
-# Fortran module files
-*.mod
+# Atmel Studio 
+*.atsuo
 
 # Compiled Static libraries
 *.lai

@@ -20,6 +20,7 @@
 #include "i2c.h"
 #include "command_interpreter.h"
 
+uint8_t       test_nixies = false;
 uint8_t       cnt_50usec = 0;  // 50 usec. counter
 unsigned long t2_millis = 0UL; // msec. counter
 extern char   rs232_inbuf[];   // RS232 input buffer
@@ -147,6 +148,26 @@ void clear_nixie(uint8_t nr)
 	} // if
 } // clear_nixie()
 
+void ftest_nixies(void)
+{
+	static uint8_t std_test = 0;
+	
+	switch (std_test)
+	{
+		case 0: nixie_bits = 0x01000000; std_test = 1; break;
+		case 1: nixie_bits = 0x02111111; std_test = 2; break;
+		case 2: nixie_bits = 0x40222222; std_test = 3; break;
+		case 3: nixie_bits = 0x04333333; std_test = 4; break;
+		case 4: nixie_bits = 0x08444444; std_test = 5; break;
+		case 5: nixie_bits = 0x80555555; std_test = 6; break;
+		case 6: nixie_bits = 0x10666666; std_test = 7; break;
+		case 7: nixie_bits = 0x20777777; std_test = 8; break;
+		case 8: nixie_bits = 0x01888888; std_test = 9; break;
+		case 9: nixie_bits = 0x02999999; std_test = 0; test_nixies = false; break;
+	} // switch
+	rgb_colour = std_test & 0x07;
+} // ftest_nixies()
+
 /*------------------------------------------------------------------------
   Purpose  : This task decide what to display on the Nixie Tubes.
 			 Called once every second.
@@ -159,7 +180,8 @@ void display_task(void)
 
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
-	if (p.sec == 25)
+	if (test_nixies) ftest_nixies(); // S3 command
+	else if (p.sec == 25)
 	{   // display date & month
 		nixie_bits = encode_to_bcd(p.date);
 		nixie_bits <<= 12;
