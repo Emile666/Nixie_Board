@@ -36,6 +36,7 @@ SUBDIRS :=
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
 ../command_interpreter.c \
+../dht22.c \
 ../i2c.c \
 ../IRremote.c \
 ../Nixie.c \
@@ -51,6 +52,7 @@ ASM_SRCS +=
 
 OBJS +=  \
 command_interpreter.o \
+dht22.o \
 i2c.o \
 IRremote.o \
 Nixie.o \
@@ -60,6 +62,7 @@ usart.o
 
 OBJS_AS_ARGS +=  \
 command_interpreter.o \
+dht22.o \
 i2c.o \
 IRremote.o \
 Nixie.o \
@@ -69,6 +72,7 @@ usart.o
 
 C_DEPS +=  \
 command_interpreter.d \
+dht22.d \
 i2c.d \
 IRremote.d \
 Nixie.d \
@@ -78,6 +82,7 @@ usart.d
 
 C_DEPS_AS_ARGS +=  \
 command_interpreter.d \
+dht22.d \
 i2c.d \
 IRremote.d \
 Nixie.d \
@@ -94,6 +99,8 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
+
+
 
 
 

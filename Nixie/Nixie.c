@@ -19,11 +19,16 @@
 #include "Nixie.h"
 #include "i2c.h"
 #include "command_interpreter.h"
+#include "dht22.h"
 
-uint8_t       test_nixies = false;
-uint8_t       cnt_50usec = 0;  // 50 usec. counter
-unsigned long t2_millis = 0UL; // msec. counter
-extern char   rs232_inbuf[];   // RS232 input buffer
+uint8_t       test_nixies = false; // S3 command
+uint8_t       cnt_50usec  = 0;     // 50 usec. counter
+unsigned long t2_millis   = 0UL;   // msec. counter
+uint16_t      dht22_hum   = 0;     // Humidity E-1 %
+int16_t       dht22_temp  = 0;     // Temperature E-1 Celsius
+int16_t       dht22_dewp  = 0;     // Dewpoint E-1 Celsius
+
+extern char   rs232_inbuf[];       // RS232 input buffer
 
 //---------------------------------------------------------------------------
 // Bits 31..24: Decimal points: LDP5 LDP3 RDP6 RDP5 RDP4 RDP3 RDP2 RDP1
@@ -84,6 +89,30 @@ ISR(TIMER2_COMPA_vect)
 	ir_isr();            // call the ISR routine for the IR-receiver
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
+
+/*------------------------------------------------------------------------
+  Purpose  : This task is called by the Task-Scheduler every 5 seconds.
+             It reads the DHT22 sensor Humidity and Temperature
+  Variables: dht22_humidity, dht22_temperature
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void dht22_task(void)
+{
+	//char s[20];
+	int8_t x;
+	
+	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
+	//x = dht22_hum / 10;
+	//sprintf(s," hum=%d.%d,",x,dht22_hum-10*x); 
+	//xputs(s);
+	//x = dht22_temp / 10;
+	//sprintf(s," temp=%d.%d,",x,dht22_temp-10*x);
+	//xputs(s);
+	dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
+	//x = dht22_dewp / 10;
+	//sprintf(s," dewpoint=%d.%d\n",x,dht22_dewp-10*x);
+	//xputs(s);
+} // dht22_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 50 msec. 
@@ -162,8 +191,8 @@ void ftest_nixies(void)
 		case 5: nixie_bits = 0x80555555; std_test = 6; break;
 		case 6: nixie_bits = 0x10666666; std_test = 7; break;
 		case 7: nixie_bits = 0x20777777; std_test = 8; break;
-		case 8: nixie_bits = 0x01888888; std_test = 9; break;
-		case 9: nixie_bits = 0x02999999; std_test = 0; test_nixies = false; break;
+		case 8: nixie_bits = 0xFF888888; std_test = 9; break;
+		case 9: nixie_bits = 0xFF999999; std_test = 0; test_nixies = false; break;
 	} // switch
 	rgb_colour = std_test & 0x07;
 } // ftest_nixies()
@@ -176,46 +205,82 @@ void ftest_nixies(void)
   ------------------------------------------------------------------------*/
 void display_task(void)
 {
-	Time p; // Time struct
-
+	Time    p; // Time struct
+	uint8_t x;
+	
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
 	if (test_nixies) ftest_nixies(); // S3 command
-	else if (p.sec == 25)
-	{   // display date & month
-		nixie_bits = encode_to_bcd(p.date);
-		nixie_bits <<= 12;
-		nixie_bits |= encode_to_bcd(p.mon);
-		nixie_bits <<= 4;
-		clear_nixie(3);
-		clear_nixie(6);
-		rgb_colour = BLUE;
-	}
-	else if (p.sec == 26)
-	{	// display year
-		nixie_bits = encode_to_bcd(p.year / 100);
-		nixie_bits <<= 8;
-		nixie_bits |= encode_to_bcd(p.year % 100);
-		nixie_bits <<= 4;
-		clear_nixie(1);
-		clear_nixie(6);
-		rgb_colour = BLUE;
-	} // else if
-	else
-	{   // display normal time
-		nixie_bits = encode_to_bcd(p.hour);
-		nixie_bits <<= 8; // SHL 8
-		nixie_bits |= encode_to_bcd(p.min);
-		nixie_bits <<= 8; // SHL 8
-		nixie_bits |= encode_to_bcd(p.sec);
-		rgb_colour = BLACK;
-		if (p.sec & 0x01)
-		     nixie_bits |= RIGHT_DP4;
-		else nixie_bits |= LEFT_DP5;
-		if (p.min & 0x01)
-		     nixie_bits |= RIGHT_DP2;
-		else nixie_bits |= LEFT_DP3;
-	} // else
+	else switch(p.sec)
+	{
+		case 25: // display date & month
+			nixie_bits = encode_to_bcd(p.date);
+			nixie_bits <<= 12;
+			nixie_bits |= encode_to_bcd(p.mon);
+			nixie_bits <<= 4;
+			clear_nixie(3);
+			clear_nixie(6);
+			rgb_colour = GREEN;
+			break;
+		case 26: // display year
+			nixie_bits = encode_to_bcd(p.year / 100);
+			nixie_bits <<= 8;
+			nixie_bits |= encode_to_bcd(p.year % 100);
+			nixie_bits <<= 4;
+			clear_nixie(1);
+			clear_nixie(6);
+			rgb_colour = GREEN;
+			break;
+		case 35: // display humidity
+			x = dht22_hum / 10;
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 4;
+			nixie_bits |= (dht22_hum - 10 * x);
+			nixie_bits <<= 12;
+			nixie_bits |= RIGHT_DP2;
+			clear_nixie(4);
+			clear_nixie(5);
+			clear_nixie(6);
+			rgb_colour = BLUE;
+			break;
+		case 36: // display temperature
+			x = dht22_temp / 10;
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 4;
+			nixie_bits |= (dht22_temp - 10 * x);
+			nixie_bits |= RIGHT_DP5;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
+			rgb_colour = BLUE;
+			break;
+		case 37: // display dewpoint
+			x = dht22_dewp / 10;
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 4;
+			nixie_bits |= (dht22_dewp - 10 * x);
+			nixie_bits <<= 4;
+			nixie_bits |= RIGHT_DP4;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(6);
+			rgb_colour = CYAN;
+			break;
+		default: // display normal time
+			nixie_bits = encode_to_bcd(p.hour);
+			nixie_bits <<= 8; // SHL 8
+			nixie_bits |= encode_to_bcd(p.min);
+			nixie_bits <<= 8; // SHL 8
+			nixie_bits |= encode_to_bcd(p.sec);
+			rgb_colour = BLACK;
+			if (p.sec & 0x01)
+				 nixie_bits |= RIGHT_DP4;
+			else nixie_bits |= LEFT_DP5;
+			if (p.min & 0x01)
+				 nixie_bits |= RIGHT_DP2;
+			else nixie_bits |= LEFT_DP3;
+			break;
+	} // else switch
 } // display_task()
 
 /*------------------------------------------------------------------------
@@ -272,7 +337,8 @@ int main(void)
 	// Add tasks for task-scheduler here
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
-	add_task(ir_receive   ,"IR_recv",200,  500); // Run IR-process   every 500 msec.
+	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
+	add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
 	
 	sei(); // set global interrupt enable, start task-scheduler
 	xputs("Nixie board v0.1, Emile, Martijn, Ronald\n");

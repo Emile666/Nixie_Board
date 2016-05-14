@@ -78,6 +78,12 @@
     <Compile Include="command_interpreter.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="dht22.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="dht22.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="i2c.c">
       <SubType>compile</SubType>
     </Compile>
