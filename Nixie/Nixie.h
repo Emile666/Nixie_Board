@@ -31,6 +31,9 @@
 #ifndef _Nixie_h
 #define _Nixie_h
 
+// Set to 1 to print sensor outputs
+#define DEBUG_SENSORS (1)
+
 //------------------------
 // PORTB Defines
 //------------------------
@@ -73,5 +76,13 @@
 #define RIGHT_DP3 (0x04000000)
 #define RIGHT_DP2 (0x02000000)
 #define RIGHT_DP1 (0x01000000)
+
+//------------------------
+// BMP180 STD Defines
+//------------------------
+#define S180_START_T (0)
+#define S180_GET_T   (1)
+#define S180_START_P (2)
+#define S180_GET_P   (3)
 
 #endif

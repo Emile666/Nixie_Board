@@ -20,13 +20,16 @@
 #include "i2c.h"
 #include "command_interpreter.h"
 #include "dht22.h"
+#include "bmp180.h"
 
-uint8_t       test_nixies = false; // S3 command
-uint8_t       cnt_50usec  = 0;     // 50 usec. counter
-unsigned long t2_millis   = 0UL;   // msec. counter
-uint16_t      dht22_hum   = 0;     // Humidity E-1 %
-int16_t       dht22_temp  = 0;     // Temperature E-1 Celsius
-int16_t       dht22_dewp  = 0;     // Dewpoint E-1 Celsius
+uint8_t       test_nixies = false;   // S3 command
+uint8_t       cnt_50usec  = 0;       // 50 usec. counter
+unsigned long t2_millis   = 0UL;     // msec. counter
+uint16_t      dht22_hum   = 0;       // Humidity E-1 %
+int16_t       dht22_temp  = 0;       // Temperature E-1 Celsius
+int16_t       dht22_dewp  = 0;       // Dewpoint E-1 Celsius
+double        bmp180_pressure = 0.0; // Pressure E-1 mbar
+double        bmp180_temp     = 0.0; // Temperature E-1 Celsius
 
 extern char   rs232_inbuf[];       // RS232 input buffer
 
@@ -98,21 +101,84 @@ ISR(TIMER2_COMPA_vect)
   ------------------------------------------------------------------------*/
 void dht22_task(void)
 {
-	//char s[20];
 	int8_t x;
 	
 	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
-	//x = dht22_hum / 10;
-	//sprintf(s," hum=%d.%d,",x,dht22_hum-10*x); 
-	//xputs(s);
-	//x = dht22_temp / 10;
-	//sprintf(s," temp=%d.%d,",x,dht22_temp-10*x);
-	//xputs(s);
 	dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
-	//x = dht22_dewp / 10;
-	//sprintf(s," dewpoint=%d.%d\n",x,dht22_dewp-10*x);
-	//xputs(s);
+#ifdef DEBUG_SENSORS
+	char s[30];
+	x = dht22_hum / 10;
+	sprintf(s,"dht22: RH=%d.%d %%, ",x,dht22_hum-10*x); 
+	xputs(s);
+	x = dht22_temp / 10;
+	sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
+	xputs(s);
+	x = dht22_dewp / 10;
+	sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
+	xputs(s);
+#endif
 } // dht22_task()
+
+/*------------------------------------------------------------------------
+  Purpose  : This task is called by the Task-Scheduler every second.
+             It reads the BMP180 pressure and temperature.
+  Variables: bmp180_pressure, bmp180_temperature
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void bmp180_task(void)
+{
+	static uint8_t std180 = S180_START_T;
+	char   s[30];
+	bool   err;
+	
+	switch (std180)
+	{
+		case S180_START_T:
+			err = bmp180_start_temperature();
+			if (err) xputs("bmp180: start_T err\n");
+			else std180 = S180_GET_T;
+			break;
+
+		case S180_GET_T:
+			err = bmp180_get_temperature(&bmp180_temp);
+			if (err) std180 = S180_START_T;
+			else     std180 = S180_START_P;
+#ifdef DEBUG_SENSORS
+			xputs("bmp180: ");
+			if (err) xputs("Terr\n");
+			else
+			{
+				sprintf(s,"%4.1f °C\n",bmp180_temp);
+				xputs(s);
+			} // else
+#endif
+			break;
+			
+		case S180_START_P:
+			err = bmp180_start_pressure(BMP180_COMMAND_PRESSURE3);
+			if (err) 
+			{
+				 xputs("start_P err\n");
+				 std180 = S180_START_T;
+			} // if
+			else std180 = S180_GET_P;
+			break;
+
+		case S180_GET_P:
+			err = bmp180_get_pressure(&bmp180_pressure,bmp180_temp);
+			std180 = S180_START_T;
+#ifdef DEBUG_SENSORS
+			xputs("bmp180: ");
+			if (err) xputs("Perr\n");
+			else
+			{
+				sprintf(s,"%4.1f mbar\n",bmp180_pressure);
+				xputs(s);
+			} // else
+#endif
+			break;
+	} // switch
+} // bmp180_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 50 msec. 
@@ -266,6 +332,19 @@ void display_task(void)
 			clear_nixie(6);
 			rgb_colour = CYAN;
 			break;
+		case 45: // display Pressure in mbar
+			x = (uint8_t)(bmp180_pressure / 100.0);
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 8;
+			x = (uint8_t)(bmp180_pressure - (int16_t)x * 100);
+			nixie_bits |= encode_to_bcd(x);
+			nixie_bits <<= 4;
+			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
+			nixie_bits |= x;
+			nixie_bits |= RIGHT_DP5;
+			clear_nixie(1);
+			rgb_colour = RED;
+		break;
 		default: // display normal time
 			nixie_bits = encode_to_bcd(p.hour);
 			nixie_bits <<= 8; // SHL 8
@@ -333,13 +412,15 @@ int main(void)
 	// Initialize Serial Communication, See usart.h for BAUD
 	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
 	usart_init(MYUBRR); // Initializes the serial communication
+	bmp180_init();      // Init. the BMP180 sensor
 	
 	// Add tasks for task-scheduler here
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
 	add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
-	
+	add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
+
 	sei(); // set global interrupt enable, start task-scheduler
 	xputs("Nixie board v0.1, Emile, Martijn, Ronald\n");
     while(1)

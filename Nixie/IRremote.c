@@ -339,7 +339,6 @@ void std_cmd(void)
 void ir_receive(void)
 {
 	char    s[20];
-	static  uint8_t cmd_rcv = false;
 	
 	if (ir_decode(&results)) // have we received an IR signal?
 	{

@@ -35,6 +35,7 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
+../bmp180.c \
 ../command_interpreter.c \
 ../dht22.c \
 ../i2c.c \
@@ -51,6 +52,7 @@ ASM_SRCS +=
 
 
 OBJS +=  \
+bmp180.o \
 command_interpreter.o \
 dht22.o \
 i2c.o \
@@ -61,6 +63,7 @@ usart.o
 
 
 OBJS_AS_ARGS +=  \
+bmp180.o \
 command_interpreter.o \
 dht22.o \
 i2c.o \
@@ -71,6 +74,7 @@ usart.o
 
 
 C_DEPS +=  \
+bmp180.d \
 command_interpreter.d \
 dht22.d \
 i2c.d \
@@ -81,6 +85,7 @@ usart.d
 
 
 C_DEPS_AS_ARGS +=  \
+bmp180.d \
 command_interpreter.d \
 dht22.d \
 i2c.d \
@@ -99,6 +104,8 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
+
+
 
 
 
@@ -145,7 +152,7 @@ all: $(OUTPUT_FILE_PATH) $(ADDITIONAL_DEPENDENCIES)
 $(OUTPUT_FILE_PATH): $(OBJS) $(USER_OBJS) $(OUTPUT_FILE_DEP)
 	@echo Building target: $@
 	@echo Invoking: AVR/GNU Linker : (AVR_8_bit_GNU_Toolchain_3.4.1_830) 4.6.2
-	$(QUOTE)C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.1.95\AVRToolchain\bin\avr-gcc.exe$(QUOTE) -o$(OUTPUT_FILE_PATH_AS_ARGS) $(OBJS_AS_ARGS) $(USER_OBJS) $(LIBS) -Wl,-Map="Nixie.map" -Wl,--start-group -Wl,-lm  -Wl,--end-group  -mmcu=atmega328p  
+	$(QUOTE)C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.1.95\AVRToolchain\bin\avr-gcc.exe$(QUOTE) -o$(OUTPUT_FILE_PATH_AS_ARGS) $(OBJS_AS_ARGS) $(USER_OBJS) $(LIBS) -Wl,-Map="Nixie.map" -Wl,-u,vfprintf -Wl,--start-group -Wl,-lm  -Wl,--end-group -lprintf_flt  -mmcu=atmega328p  
 	@echo Finished building target: $@
 	"C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.1.95\AVRToolchain\bin\avr-objcopy.exe" -O ihex -R .eeprom -R .fuse -R .lock -R .signature  "Nixie.elf" "Nixie.hex"
 	"C:\Program Files (x86)\Atmel\Atmel Studio 6.0\extensions\Atmel\AVRGCC\3.4.1.95\AVRToolchain\bin\avr-objcopy.exe" -j .eeprom  --set-section-flags=.eeprom=alloc,load --change-section-lma .eeprom=0  --no-change-warnings -O ihex "Nixie.elf" "Nixie.eep" || exit 0
