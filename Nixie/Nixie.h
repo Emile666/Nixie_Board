@@ -63,7 +63,8 @@
 #define WHITE       (RED |GREEN|BLUE)
 #define BLACK       (0x00)
 
-#define NIXIE_CLEAR (10UL)
+#define NIXIE_CLEAR     (10UL)
+#define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
 
 //------------------------
 // Nixie Decimal Points

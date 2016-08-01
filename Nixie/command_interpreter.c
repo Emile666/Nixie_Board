@@ -17,11 +17,16 @@
 #include <stdio.h>
 #include "i2c.h"
 #include "command_interpreter.h"
+#include "eep.h"
 
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
 extern  uint8_t rgb_colour;
 extern  uint8_t test_nixies;
+extern  uint8_t blank_begin_h;
+extern  uint8_t blank_begin_m;
+extern  uint8_t blank_end_h;
+extern  uint8_t blank_end_m;
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -133,6 +138,34 @@ uint8_t execute_single_command(char *s)
 								 case 2: xputs("50 °C\n"); break;
 								 case 3: xputs("75 °C\n"); break;
 							 } // switch
+							 break;
+					 case 4: // Set Start-Time for blanking Nixies
+							 s1 = strtok(&s[3],":-.");
+							 h  = atoi(s1);
+							 s1 = strtok(NULL ,":-.");
+							 m  = atoi(s1);
+							 if ((h < 24) && (m < 60))
+							 {
+								blank_begin_h = h;
+								blank_begin_m = m;
+								write_eeprom_parameters(); 
+								sprintf(s2,"Time: %02d:%02d\n",h,m);
+								xputs(s2);
+							 } // if
+							 break;
+					 case 5: // Set End-Time for blanking Nixies
+							 s1 = strtok(&s[3],":-.");
+							 h  = atoi(s1);
+							 s1 = strtok(NULL ,":-.");
+							 m  = atoi(s1);
+							 if ((h < 24) && (m < 60))
+							 {
+								 blank_end_h = h;
+								 blank_end_m = m;
+								 write_eeprom_parameters();
+								 sprintf(s2,"Time: %02d:%02d\n",h,m);
+								 xputs(s2);
+							 } // if
 							 break;
 					 default: rval = ERR_NUM;
 							  break;

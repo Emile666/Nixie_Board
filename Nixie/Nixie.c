@@ -21,6 +21,7 @@
 #include "command_interpreter.h"
 #include "dht22.h"
 #include "bmp180.h"
+#include "eep.h"
 
 uint8_t       test_nixies = false;   // S3 command
 uint8_t       cnt_50usec  = 0;       // 50 usec. counter
@@ -31,6 +32,10 @@ int16_t       dht22_dewp  = 0;       // Dewpoint E-1 Celsius
 double        bmp180_pressure = 0.0; // Pressure E-1 mbar
 double        bmp180_temp     = 0.0; // Temperature E-1 Celsius
 bool          dst_active      = false; // true = Daylight Saving Time active
+uint8_t       blank_begin_h   = 0;
+uint8_t       blank_begin_m   = 0;
+uint8_t       blank_end_h     = 0;
+uint8_t       blank_end_m     = 0;
 
 extern char   rs232_inbuf[];       // RS232 input buffer
 
@@ -265,15 +270,38 @@ void bmp180_task(void)
 void update_nixies(void)
 {
 	uint8_t i;
-	uint32_t mask = 0x80000000; // start with MSB
-	
+	uint32_t        mask = 0x80000000; // start with MSB
+	static uint8_t  wheel_cnt_sec = 0, wheel_cnt_min = 0;
+	uint8_t         wheel[11] = {0,11,22,33,44,55,66,77,88,99,0};
+	uint32_t        bitstream;
+			
 	PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
 	PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
 	
+	if ((nixie_bits & 0x0000FF00) == 0x00000000)
+	{	// minutes == 0, wheel-effect
+		bitstream = nixie_bits | (((uint32_t)wheel[wheel_cnt_min]) << 8);
+		if (++wheel_cnt_min > 10) wheel_cnt_min = 10;
+	} // if
+	else
+	{
+		bitstream     = nixie_bits;
+		wheel_cnt_min = 0;
+	} // else
+	if ((nixie_bits & 0x000000FF) == 0x00000000)
+	{	 // seconds == 0, wheel-effect
+		bitstream |= wheel[wheel_cnt_sec];
+		if (++wheel_cnt_sec > 10) wheel_cnt_sec = 10;
+	} // if
+	else
+	{
+		bitstream     = nixie_bits;
+		wheel_cnt_sec = 0;
+	} // else
 	for (i = 0; i < 32; i++)
 	{
 		PORTD &= ~(SHCP|STCP); // set clocks to 0
-		if ((nixie_bits & mask) == mask)
+		if ((bitstream & mask) == mask)
 			 PORTD |=  SDIN; // set SDIN to 1
 		else PORTD &= ~SDIN; // set SDIN to 0
 		mask >>= 1;     // shift right 1
@@ -340,6 +368,21 @@ void ftest_nixies(void)
 } // ftest_nixies()
 
 /*------------------------------------------------------------------------
+  Purpose  : This function decides if the current time falls between the
+             blanking time for the Nixies.
+  Variables: p: Time struct containing actual time
+  Returns  : true: blanking is true, false: no blanking
+  ------------------------------------------------------------------------*/
+bool blanking_active(Time p)
+{
+	if ( (p.hour >  blank_end_h)   && (p.hour <  blank_begin_h) ||
+	    ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))  ||
+	    ((p.hour == blank_begin_h) && (p.min  <  blank_begin_m)))
+	     return false;
+	else return true;
+} // blanking_active()
+
+/*------------------------------------------------------------------------
   Purpose  : This task decide what to display on the Nixie Tubes.
 			 Called once every second.
   Variables: nixie_bits (32 bits)
@@ -353,7 +396,9 @@ void display_task(void)
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
 	if (test_nixies) ftest_nixies(); // S3 command
-	else switch(p.sec)
+	else if (blanking_active(p))
+	     nixie_bits = NIXIE_CLEAR_ALL;
+	else switch (p.sec)
 	{
 		case 25: // display date & month
 			nixie_bits = encode_to_bcd(p.date);
@@ -378,25 +423,25 @@ void display_task(void)
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
 			nixie_bits |= (uint8_t)(10.0 * (bmp180_temp - x));
+			nixie_bits <<= 12;
+			nixie_bits |= RIGHT_DP2;
+			clear_nixie(4);
+			clear_nixie(5);
+			clear_nixie(6);
+			rgb_colour = YELLOW;
+			break;
+		case 40: // display humidity
+			x = dht22_hum / 10;
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 4;
+			nixie_bits |= (dht22_hum - 10 * x);
 			nixie_bits |= RIGHT_DP5;
 			clear_nixie(1);
 			clear_nixie(2);
 			clear_nixie(3);
 			rgb_colour = BLUE;
 			break;
-		case 36: // display humidity
-			x = dht22_hum / 10;
-			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 4;
-			nixie_bits |= (dht22_hum - 10 * x);
-			nixie_bits <<= 12;
-			nixie_bits |= RIGHT_DP2;
-			clear_nixie(4);
-			clear_nixie(5);
-			clear_nixie(6);
-			rgb_colour = BLUE;
-			break;
-		case 37: // display dewpoint
+		case 41: // display dew point
 			x = dht22_dewp / 10;
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
@@ -408,7 +453,7 @@ void display_task(void)
 			clear_nixie(6);
 			rgb_colour = CYAN;
 			break;
-		case 45: // display Pressure in mbar
+		case 50: // display Pressure in mbar
 			x = (uint8_t)(bmp180_pressure / 100.0);
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
@@ -428,7 +473,8 @@ void display_task(void)
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
-			rgb_colour = BLACK;
+			if (p.sec == 0) rgb_colour = WHITE;
+			else            rgb_colour = BLACK;
 			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
 			else              nixie_bits |=  LEFT_DP5;
 			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
@@ -499,7 +545,11 @@ int main(void)
 	add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
 
 	sei(); // set global interrupt enable, start task-scheduler
-	xputs("Nixie board v0.1, Emile, Martijn, Ronald\n");
+	check_and_init_eeprom();  // Init. EEPROM
+	read_eeprom_parameters();
+	xputs("Nixie board v0.2, Emile, Martijn, Ronald\n");
+	xputs("Blanking:");
+	sprintf(s,"%d:%d - %d:%d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); xputs(s);
     while(1)
     {   // Run all scheduled tasks here
 		dispatch_tasks(); // Run Task-Scheduler

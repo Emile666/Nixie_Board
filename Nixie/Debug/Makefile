@@ -38,6 +38,7 @@ C_SRCS +=  \
 ../bmp180.c \
 ../command_interpreter.c \
 ../dht22.c \
+../eep.c \
 ../i2c.c \
 ../IRremote.c \
 ../Nixie.c \
@@ -55,6 +56,7 @@ OBJS +=  \
 bmp180.o \
 command_interpreter.o \
 dht22.o \
+eep.o \
 i2c.o \
 IRremote.o \
 Nixie.o \
@@ -66,6 +68,7 @@ OBJS_AS_ARGS +=  \
 bmp180.o \
 command_interpreter.o \
 dht22.o \
+eep.o \
 i2c.o \
 IRremote.o \
 Nixie.o \
@@ -77,6 +80,7 @@ C_DEPS +=  \
 bmp180.d \
 command_interpreter.d \
 dht22.d \
+eep.d \
 i2c.d \
 IRremote.d \
 Nixie.d \
@@ -88,6 +92,7 @@ C_DEPS_AS_ARGS +=  \
 bmp180.d \
 command_interpreter.d \
 dht22.d \
+eep.d \
 i2c.d \
 IRremote.d \
 Nixie.d \
@@ -104,6 +109,8 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
+
+
 
 
 
