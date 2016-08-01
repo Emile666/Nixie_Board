@@ -8,6 +8,7 @@ The firmware contains the following features: UART (via USB) interrupt-driven co
 Use with Atmel Studio v6 or higher.
 
 When a terminal is connected to the USB port (38400,N,8,1), the following commands are possible:
+
 D0: Set Date, e.g. "D0 15-12-2016"
 D1: Set Time, e.g. "D1 7:32:48"
 D2: Get Date and Time
