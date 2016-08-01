@@ -30,6 +30,7 @@ int16_t       dht22_temp  = 0;       // Temperature E-1 Celsius
 int16_t       dht22_dewp  = 0;       // Dewpoint E-1 Celsius
 double        bmp180_pressure = 0.0; // Pressure E-1 mbar
 double        bmp180_temp     = 0.0; // Temperature E-1 Celsius
+bool          dst_active      = false; // true = Daylight Saving Time active
 
 extern char   rs232_inbuf[];       // RS232 input buffer
 
@@ -92,6 +93,81 @@ ISR(TIMER2_COMPA_vect)
 	ir_isr();            // call the ISR routine for the IR-receiver
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
+
+/*------------------------------------------------------------------------
+  Purpose  : This task is called every time the time is displayed on the
+             Nixies. It checks for a change from summer- to wintertime and
+			 vice-versa.
+			 To start DST: Find the last Sunday in March: @2 AM advance clock to 3 AM.
+			 To stop DST : Find the last Sunday in October: @3 AM set clock back to 2 AM (only once!).
+  Variables: p: pointer to time-struct
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void check_and_set_summertime(Time p)
+{
+	uint8_t        day,lsun03,lsun10;
+    static uint8_t advance_time = 0;
+	static uint8_t revert_time  = 0;
+	char           s[20];
+	
+	if (p.mon == 3)
+	{
+		day    = ds3231_calc_dow(31,3,p.year); // Find day-of-week for March 31th
+		lsun03 = 31 - (day % 7);               // Find last Sunday in March
+#ifdef DEBUG_SENSORS
+		sprintf(s,"lsun03=%d\n",lsun03); xputs(s);
+#endif
+		switch (advance_time)
+		{
+			case 0: if ((p.date == lsun03) && (p.hour == 2) && (p.min == 0))
+					{   // At 2:00 AM advance time to 3 AM, check for one minute
+						advance_time = 1;
+					} // if
+					else if (p.date < lsun03) dst_active = false;
+					else if (p.date > lsun03) dst_active = true;
+					else if (p.hour < 2)      dst_active = false;
+					break;
+			case 1: // Now advance time, do this only once
+					ds3231_settime(3,0,p.sec); // Set time to 3:00, leave secs the same
+					advance_time = 2;
+					dst_active   = true;
+					break;
+			case 2: if (p.min > 0) advance_time = 0; // At 3:01:00 back to normal
+					dst_active = true;
+					break;
+		} // switch
+	} // if
+	else if (p.mon == 10)
+	{
+		day    = ds3231_calc_dow(31,10,p.year); // Find day-of-week for October 31th
+		lsun10 = 31 - (day % 7);                // Find last Sunday in October
+#ifdef DEBUG_SENSORS
+		sprintf(s,"lsun10=%d\n",lsun10); xputs(s);
+#endif
+		switch (revert_time)
+		{
+			case 0: if ((p.date == lsun10) && (p.hour == 3) && (p.min == 0))
+					{   // At 3:00 AM revert time back to 2 AM, check for one minute
+						revert_time = 1;
+					} // if
+					else if (p.date > lsun10) dst_active = false;
+					else if (p.date < lsun10) dst_active = true;
+					else if (p.hour < 3)      dst_active = true;
+					break;
+			case 1: // Now revert time, do this only once
+					ds3231_settime(2,0,p.sec); // Set time back to 2:00, leave secs the same
+					revert_time = 2;
+					dst_active  = false;
+					break;
+			case 2: // make sure that we passed 3 AM in order to prevent multiple reverts
+					if (p.hour > 3) revert_time = 0; // at 4:00:00 back to normal
+					dst_active = false;
+					break;
+		} // switch
+	} // else if
+	else if ((p.mon < 3) || (p.mon > 10)) dst_active = false;
+	else                                  dst_active = true; 
+} // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 5 seconds.
@@ -297,7 +373,18 @@ void display_task(void)
 			clear_nixie(6);
 			rgb_colour = GREEN;
 			break;
-		case 35: // display humidity
+		case 35: // display temperature
+			x = (uint8_t)bmp180_temp;
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 4;
+			nixie_bits |= (uint8_t)(10.0 * (bmp180_temp - x));
+			nixie_bits |= RIGHT_DP5;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
+			rgb_colour = BLUE;
+			break;
+		case 36: // display humidity
 			x = dht22_hum / 10;
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
@@ -307,17 +394,6 @@ void display_task(void)
 			clear_nixie(4);
 			clear_nixie(5);
 			clear_nixie(6);
-			rgb_colour = BLUE;
-			break;
-		case 36: // display temperature
-			x = dht22_temp / 10;
-			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 4;
-			nixie_bits |= (dht22_temp - 10 * x);
-			nixie_bits |= RIGHT_DP5;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
 			rgb_colour = BLUE;
 			break;
 		case 37: // display dewpoint
@@ -346,24 +422,25 @@ void display_task(void)
 			rgb_colour = RED;
 		break;
 		default: // display normal time
+		    check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.hour);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
 			rgb_colour = BLACK;
-			if (p.sec & 0x01)
-				 nixie_bits |= RIGHT_DP4;
-			else nixie_bits |= LEFT_DP5;
-			if (p.min & 0x01)
-				 nixie_bits |= RIGHT_DP2;
-			else nixie_bits |= LEFT_DP3;
+			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
+			else              nixie_bits |=  LEFT_DP5;
+			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
+			else              nixie_bits |=  LEFT_DP3;
+			if (dst_active)   nixie_bits |=  RIGHT_DP6;
+			else              nixie_bits &= ~RIGHT_DP6;
 			break;
 	} // else switch
 } // display_task()
 
 /*------------------------------------------------------------------------
-Purpose  : This function initialises Timer 2 for a 20 kHz (50 usec.)
+Purpose  : This function initializes Timer 2 for a 20 kHz (50 usec.)
            signal, because the IR library needs a 50 usec interrupt.
 Variables: -
 Returns  : -
@@ -379,7 +456,7 @@ void init_timer2(void)
 } // init_timer2()
 
 /*------------------------------------------------------------------------
-Purpose  : This function initialises PORTB and PORTD pins.
+Purpose  : This function initializes PORTB and PORTD pins.
            See Nixie.h header for a detailed overview of all port-pins.
 Variables: -
 Returns  : -
