@@ -58,6 +58,7 @@ bool bmp180_init(void)
 		// AC1 = 7911; AC2 = -934; AC3 = -14306; AC4 = 31567; AC5 = 25671; AC6 = 18974;
 		// VB1 = 5498; VB2 = 46; MB = -32768; MC = -11075; MD = 2432;
 
+/*
 		
 		char s[20];
 		sprintf(s,"AC1:%d\n",AC1); xputs(s);
@@ -71,7 +72,7 @@ bool bmp180_init(void)
 		sprintf(s,"MB:%d\n",MB)  ; xputs(s);
 		sprintf(s,"MC:%d\n",MC)  ; xputs(s);
 		sprintf(s,"MD:%d\n",MD)  ; xputs(s);
-		
+*/		
 		
 		// Compute floating-point polynominals:
 

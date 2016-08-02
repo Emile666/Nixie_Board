@@ -36,8 +36,17 @@ uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
+uint8_t       wheel_effect    = 0;    // 0: none, 1: from 59->00, 2: every second/minute
+bool          display_time    = true; // true = hh:mm:ss is on display 
+uint8_t		  col_time; // Colour for Time display
+uint8_t		  col_date; // Colour for Date & Year display
+uint8_t       col_temp; // Colour for Temperature display
+uint8_t       col_humi; // Colour for Humidity display
+uint8_t       col_dewp; // Colour for Dew-point display
+uint8_t       col_pres; // Colour for Pressure display
+uint8_t       col_roll; // Colour for second roll-over
 
-extern char   rs232_inbuf[];       // RS232 input buffer
+extern char   rs232_inbuf[];          // RS232 input buffer
 
 //---------------------------------------------------------------------------
 // Bits 31..24: Decimal points: LDP5 LDP3 RDP6 RDP5 RDP4 RDP3 RDP2 RDP1
@@ -182,11 +191,11 @@ void check_and_set_summertime(Time p)
   ------------------------------------------------------------------------*/
 void dht22_task(void)
 {
-	int8_t x;
 	
 	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
 	dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
 #ifdef DEBUG_SENSORS
+	int8_t x;
 	char s[30];
 	x = dht22_hum / 10;
 	sprintf(s,"dht22: RH=%d.%d %%, ",x,dht22_hum-10*x); 
@@ -269,35 +278,85 @@ void bmp180_task(void)
   ------------------------------------------------------------------------*/
 void update_nixies(void)
 {
-	uint8_t i;
+	uint8_t         i, x;
 	uint32_t        mask = 0x80000000; // start with MSB
+	uint32_t        bitstream;         // copy of nixie_bits
 	static uint8_t  wheel_cnt_sec = 0, wheel_cnt_min = 0;
-	uint8_t         wheel[11] = {0,11,22,33,44,55,66,77,88,99,0};
-	uint32_t        bitstream;
+	static uint8_t  bits_min_old, bits_sec_old;
+	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
 			
 	PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
 	PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
 	
-	if ((nixie_bits & 0x0000FF00) == 0x00000000)
-	{	// minutes == 0, wheel-effect
-		bitstream = nixie_bits | (((uint32_t)wheel[wheel_cnt_min]) << 8);
-		if (++wheel_cnt_min > 10) wheel_cnt_min = 10;
-	} // if
-	else
+	bitstream = nixie_bits; // copy original bitstream
+	if (display_time)
 	{
-		bitstream     = nixie_bits;
-		wheel_cnt_min = 0;
-	} // else
-	if ((nixie_bits & 0x000000FF) == 0x00000000)
-	{	 // seconds == 0, wheel-effect
-		bitstream |= wheel[wheel_cnt_sec];
-		if (++wheel_cnt_sec > 10) wheel_cnt_sec = 10;
-	} // if
-	else
-	{
-		bitstream     = nixie_bits;
-		wheel_cnt_sec = 0;
-	} // else
+		//------------------------------------------
+		// Rotate the MINUTES digits (wheel-effect)
+		//------------------------------------------
+		x = (uint8_t)((nixie_bits & 0x0000FF00) >> 8); // isolate minutes digits
+		switch (wheel_effect)
+		{
+			case 0: // no wheel-effect
+					wheel_cnt_min = 0;
+					break;
+			case 1: // wheel-effect from 59 -> 0
+					if (x == 0)
+					{	// minutes == 0, wheel-effect
+						bitstream |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
+						if (++wheel_cnt_min > WH_MAX-1) wheel_cnt_min = WH_MAX-1;
+					} // if
+					else wheel_cnt_min = 0; // reset for next minute
+					break;
+			case 2: // wheel-effect on every change in minutes
+					if (x != bits_min_old)
+					{	// change in minutes
+						bitstream   &= 0xFFFF00FF; // clear minutes bits
+						bitstream   |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
+						if (++wheel_cnt_min > WH_MAX-1)
+						{
+							wheel_cnt_min = WH_MAX-1;
+							bits_min_old = x;
+						} // if
+					} // if
+					else wheel_cnt_min = 0; // reset for next minute
+					break;
+		} // switch
+		//------------------------------------------
+		// Rotate the SECONDS digits (wheel-effect)
+		//------------------------------------------
+		x = (uint8_t)(bitstream & 0x000000FF); // isolate seconds digits
+		switch (wheel_effect)
+		{
+			case 0: // no wheel-effect
+				wheel_cnt_sec = 0;
+				break;
+			case 1: // wheel-effect from 59 -> 0
+				if (x == 0)
+				{	// seconds == 0, wheel-effect
+					bitstream |= wheel[wheel_cnt_sec];
+					if (++wheel_cnt_sec > WH_MAX-1) wheel_cnt_sec = WH_MAX-1;
+				} // if
+				else wheel_cnt_sec = 0; // reset for next second
+				break;
+			case 2: // wheel-effect on every change in seconds
+				if (x != bits_sec_old)
+				{	// change in seconds
+					bitstream   &= 0xFFFFFF00; // clear seconds bits
+					bitstream   |= wheel[wheel_cnt_sec];
+					if (++wheel_cnt_sec > WH_MAX-1)
+					{
+						wheel_cnt_sec = WH_MAX-1;
+						bits_sec_old = x;
+					} // if
+				} // if
+				else wheel_cnt_sec = 0; // reset for next second
+				break;
+		} // switch
+	} // if	
+	//------------------------------------------
+	// Now send the nixie bitstream to hardware
+	//------------------------------------------
 	for (i = 0; i < 32; i++)
 	{
 		PORTD &= ~(SHCP|STCP); // set clocks to 0
@@ -395,6 +454,7 @@ void display_task(void)
 	
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
+	display_time = false; // start with no-time on display
 	if (test_nixies) ftest_nixies(); // S3 command
 	else if (blanking_active(p))
 	     nixie_bits = NIXIE_CLEAR_ALL;
@@ -407,7 +467,7 @@ void display_task(void)
 			nixie_bits <<= 4;
 			clear_nixie(3);
 			clear_nixie(6);
-			rgb_colour = GREEN;
+			rgb_colour = col_date;
 			break;
 		case 26: // display year
 			nixie_bits = encode_to_bcd(p.year / 100);
@@ -416,7 +476,7 @@ void display_task(void)
 			nixie_bits <<= 4;
 			clear_nixie(1);
 			clear_nixie(6);
-			rgb_colour = GREEN;
+			rgb_colour = col_date;
 			break;
 		case 35: // display temperature
 			x = (uint8_t)bmp180_temp;
@@ -428,7 +488,7 @@ void display_task(void)
 			clear_nixie(4);
 			clear_nixie(5);
 			clear_nixie(6);
-			rgb_colour = YELLOW;
+			rgb_colour = col_temp;
 			break;
 		case 40: // display humidity
 			x = dht22_hum / 10;
@@ -439,7 +499,7 @@ void display_task(void)
 			clear_nixie(1);
 			clear_nixie(2);
 			clear_nixie(3);
-			rgb_colour = BLUE;
+			rgb_colour = col_humi;
 			break;
 		case 41: // display dew point
 			x = dht22_dewp / 10;
@@ -451,7 +511,7 @@ void display_task(void)
 			clear_nixie(1);
 			clear_nixie(2);
 			clear_nixie(6);
-			rgb_colour = CYAN;
+			rgb_colour = col_dewp;
 			break;
 		case 50: // display Pressure in mbar
 			x = (uint8_t)(bmp180_pressure / 100.0);
@@ -459,22 +519,23 @@ void display_task(void)
 			nixie_bits <<= 8;
 			x = (uint8_t)(bmp180_pressure - (int16_t)x * 100);
 			nixie_bits |= encode_to_bcd(x);
-			nixie_bits <<= 4;
+			nixie_bits <<= 8;
 			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
-			nixie_bits |= x;
-			nixie_bits |= RIGHT_DP5;
-			clear_nixie(1);
-			rgb_colour = RED;
+			nixie_bits |= (x << 4);
+			nixie_bits |= RIGHT_DP4;
+			clear_nixie(6);
+			rgb_colour = col_pres;
 		break;
 		default: // display normal time
-		    check_and_set_summertime(p); // check for Summer/Wintertime change
+		    display_time = true;
+			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.hour);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
-			if (p.sec == 0) rgb_colour = WHITE;
-			else            rgb_colour = BLACK;
+			if (p.sec == 0) rgb_colour = col_roll;
+			else            rgb_colour = col_time;
 			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
 			else              nixie_bits |=  LEFT_DP5;
 			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
@@ -548,8 +609,9 @@ int main(void)
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
 	xputs("Nixie board v0.2, Emile, Martijn, Ronald\n");
-	xputs("Blanking:");
-	sprintf(s,"%d:%d - %d:%d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); xputs(s);
+	xputs("Blanking from ");
+	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); 
+	xputs(s);
     while(1)
     {   // Run all scheduled tasks here
 		dispatch_tasks(); // Run Task-Scheduler

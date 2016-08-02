@@ -32,7 +32,7 @@
 #define _Nixie_h
 
 // Set to 1 to print sensor outputs
-#define DEBUG_SENSORS (1)
+//#define DEBUG_SENSORS (1)
 
 //------------------------
 // PORTB Defines
@@ -65,6 +65,7 @@
 
 #define NIXIE_CLEAR     (10UL)
 #define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
+#define WH_MAX          (10)
 
 //------------------------
 // Nixie Decimal Points
