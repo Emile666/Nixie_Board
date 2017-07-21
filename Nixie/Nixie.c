@@ -31,7 +31,7 @@ int16_t       dht22_temp  = 0;       // Temperature E-1 Celsius
 int16_t       dht22_dewp  = 0;       // Dewpoint E-1 Celsius
 double        bmp180_pressure = 0.0; // Pressure E-1 mbar
 double        bmp180_temp     = 0.0; // Temperature E-1 Celsius
-bool          dst_active      = false; // true = Daylight Saving Time active
+bool          dst_active;            // true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
@@ -109,9 +109,9 @@ ISR(TIMER2_COMPA_vect)
 } // ISR()
 
 /*------------------------------------------------------------------------
-  Purpose  : This task is called every time the time is displayed on the
-             Nixies. It checks for a change from summer- to wintertime and
-			 vice-versa.
+  Purpose  : This task is called every time the Date and Month is displayed 
+             on the Nixies, once a minute. It checks for a change from 
+			 summer- to wintertime and vice-versa.
 			 To start DST: Find the last Sunday in March: @2 AM advance clock to 3 AM.
 			 To stop DST : Find the last Sunday in October: @3 AM set clock back to 2 AM (only once!).
   Variables: p: pointer to time-struct
@@ -128,26 +128,22 @@ void check_and_set_summertime(Time p)
 	{
 		day    = ds3231_calc_dow(31,3,p.year); // Find day-of-week for March 31th
 		lsun03 = 31 - (day % 7);               // Find last Sunday in March
-#ifdef DEBUG_SENSORS
-		sprintf(s,"lsun03=%d\n",lsun03); xputs(s);
-#endif
+		//sprintf(s,"lsun03=%d, at=%d, ",lsun03,advance_time); 
+		//xputs(s);
+		//sprintf(s,"dst=%d\n",dst_active);
+		//xputs(s);
 		switch (advance_time)
 		{
-			case 0: if ((p.date == lsun03) && (p.hour == 2) && (p.min == 0))
-					{   // At 2:00 AM advance time to 3 AM, check for one minute
+			case 0: if ((p.date == lsun03) && (p.hour >= 2) && !dst_active)
+					{   // At 2:00 AM advance time to 3 AM, or as soon as Nixie blanking is disabled
 						advance_time = 1;
 					} // if
-					else if (p.date < lsun03) dst_active = false;
-					else if (p.date > lsun03) dst_active = true;
-					else if (p.hour < 2)      dst_active = false;
 					break;
 			case 1: // Now advance time, do this only once
-					ds3231_settime(3,0,p.sec); // Set time to 3:00, leave secs the same
-					advance_time = 2;
+					ds3231_settime(1+p.hour, p.min, p.sec); // hours + 1, leave min and secs the same
 					dst_active   = true;
-					break;
-			case 2: if (p.min > 0) advance_time = 0; // At 3:01:00 back to normal
-					dst_active = true;
+					eeprom_write_byte(EEPARB_DST,dst_active); // save in EEPROM
+					advance_time = 0;
 					break;
 		} // switch
 	} // if
@@ -160,27 +156,19 @@ void check_and_set_summertime(Time p)
 #endif
 		switch (revert_time)
 		{
-			case 0: if ((p.date == lsun10) && (p.hour == 3) && (p.min == 0))
-					{   // At 3:00 AM revert time back to 2 AM, check for one minute
+			case 0: if ((p.date == lsun10) && (p.hour >= 3) && dst_active)
+					{   // At 3:00 AM revert time back to 2 AM, or as soon as Nixie blanking is disabled
 						revert_time = 1;
 					} // if
-					else if (p.date > lsun10) dst_active = false;
-					else if (p.date < lsun10) dst_active = true;
-					else if (p.hour < 3)      dst_active = true;
 					break;
 			case 1: // Now revert time, do this only once
-					ds3231_settime(2,0,p.sec); // Set time back to 2:00, leave secs the same
-					revert_time = 2;
+					ds3231_settime(p.hour-1, p.min, p.sec); // Set time 1 hour back, leave min and secs the same
 					dst_active  = false;
-					break;
-			case 2: // make sure that we passed 3 AM in order to prevent multiple reverts
-					if (p.hour > 3) revert_time = 0; // at 4:00:00 back to normal
-					dst_active = false;
+					eeprom_write_byte(EEPARB_DST,dst_active); // save in EEPROM
+					revert_time = 0;
 					break;
 		} // switch
 	} // else if
-	else if ((p.mon < 3) || (p.mon > 10)) dst_active = false;
-	else                                  dst_active = true; 
 } // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
@@ -461,6 +449,7 @@ void display_task(void)
 	else switch (p.sec)
 	{
 		case 25: // display date & month
+			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
 			nixie_bits |= encode_to_bcd(p.mon);
@@ -528,7 +517,6 @@ void display_task(void)
 		break;
 		default: // display normal time
 		    display_time = true;
-			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.hour);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.min);
@@ -608,6 +596,7 @@ int main(void)
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
+	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
 	xputs("Nixie board v0.2, Emile, Martijn, Ronald\n");
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); 
