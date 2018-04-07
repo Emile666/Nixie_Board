@@ -19,7 +19,6 @@
 
 #include <stdlib.h>
 #include "scheduler.h"
-#include "eep.h"
 
 uint8_t rs232_command_handler(void);
 uint8_t execute_single_command(char *s);
