@@ -38,13 +38,18 @@ uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
 uint8_t       wheel_effect    = 0;    // 0: none, 1: from 59->00, 2: every second/minute
 bool          display_time    = true; // true = hh:mm:ss is on display 
-uint8_t		  col_time; // Colour for Time display
-uint8_t		  col_date; // Colour for Date & Year display
-uint8_t       col_temp; // Colour for Temperature display
-uint8_t       col_humi; // Colour for Humidity display
-uint8_t       col_dewp; // Colour for Dew-point display
-uint8_t       col_pres; // Colour for Pressure display
-uint8_t       col_roll; // Colour for second roll-over
+uint8_t		  col_time;       // Colour for Time display
+uint8_t		  col_date;       // Colour for Date & Year display
+uint8_t       col_temp;       // Colour for Temperature display
+uint8_t       col_humi;       // Colour for Humidity display
+uint8_t       col_dewp;       // Colour for Dew-point display
+uint8_t       col_pres;       // Colour for Pressure display
+uint8_t       col_roll;       // Colour for second roll-over
+uint8_t       led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
+uint8_t       led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
+uint8_t       led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
+bool          hv_relay_sw;    // switch for hv_relay
+bool          hv_relay_fx;    // fix for hv_relay
 
 extern char   rs232_inbuf[];          // RS232 input buffer
 
@@ -107,6 +112,52 @@ ISR(TIMER2_COMPA_vect)
 	ir_isr();            // call the ISR routine for the IR-receiver
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
+
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine sends one byte to the WS2812B LED-string.
+  Variables: bt: the byte to send
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void ws2812b_send_byte(uint8_t bt)
+{
+    uint8_t i,x = 0x80; // Start with MSB first
+    
+    for (i = 0; i < 8; i++)
+    {
+        if (bt & x)
+        {    // Send a 1   
+             ws2812b_send_1;
+        } // if
+        else 
+        {   // Send a 0
+            ws2812b_send_0;
+        } // else
+        x >>= 1; // Next bit
+    } // for i
+} // ws2812b_send_byte()
+
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine sends the RGB-bytes for every LED to the WS2812B
+             LED string.
+  Variables: 
+      led_g: the green byte array
+      led_r: the red byte array
+      led_b: the blue byte array
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void ws2812_task(void)
+{
+    uint8_t i;
+
+    cli(); // disable IRQ for time-sensitive LED-timing
+    for (i = 0; i < NR_LEDS; i++)
+    {
+        ws2812b_send_byte(led_g[i]); // Send one byte of Green
+        ws2812b_send_byte(led_r[i]); // Send one byte of Red
+        ws2812b_send_byte(led_b[i]); // Send one byte of Blue
+    } // for i
+    sei(); // enable IRQ again
+} // ws2812_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called every time the Date and Month is displayed 
@@ -273,8 +324,8 @@ void update_nixies(void)
 	static uint8_t  bits_min_old, bits_sec_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
 			
-	PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
-	PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
+	//PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
+	//PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
 	
 	bitstream = nixie_bits; // copy original bitstream
 	if (display_time)
@@ -444,10 +495,19 @@ void display_task(void)
 	ds3231_gettime(&p);
 	display_time = false; // start with no-time on display
 	if (test_nixies) ftest_nixies(); // S3 command
+	if (hv_relay_sw)
+	{   // V0 or V1 command
+		if (hv_relay_fx)
+		     PORTB |=  HV_ON; // relay on
+		else PORTB &= ~HV_ON; // relay off
+	} // else if
 	else if (blanking_active(p))
-	     nixie_bits = NIXIE_CLEAR_ALL;
-	else switch (p.sec)
+		PORTB &= ~HV_ON; // relay off
+	else
 	{
+	  PORTB |=  HV_ON; // relay on	
+	  switch(p.sec)
+	  { 
 		case 25: // display date & month
 			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
@@ -531,7 +591,8 @@ void display_task(void)
 			if (dst_active)   nixie_bits |=  RIGHT_DP6;
 			else              nixie_bits &= ~RIGHT_DP6;
 			break;
-	} // else switch
+	  } // switch
+	} // else
 } // display_task()
 
 /*------------------------------------------------------------------------
@@ -558,10 +619,10 @@ Returns  : -
 ------------------------------------------------------------------------*/
 void init_ports(void)
 {
-	DDRB  &= ~(DHT22 | IR_RCV); // clear bits = input
-	PORTB &= ~(DHT22 | IR_RCV); // disable pull-up resistors
-	DDRB  |=  (TIME_MEAS | RGB_R | RGB_G | RGB_B); // set bits = output
-	PORTB &= ~(TIME_MEAS | RGB_R | RGB_G | RGB_B); // init. outputs to 0
+	DDRB  &= ~(IR_RCV); // clear bits = input
+	PORTB &= ~(IR_RCV); // disable pull-up resistors
+	DDRB  |=  (TIME_MEAS | WS2812_DI | HV_ON); // set bits = output
+	PORTB &= ~(TIME_MEAS | WS2812_DI | HV_ON); // init. outputs to 0
 	DDRD  |=  (SDIN | SHCP | STCP); // set bits = output
 	PORTD &= ~(SDIN | SHCP | STCP); // init. outputs to 0
 } // init_ports()
@@ -590,14 +651,14 @@ int main(void)
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
-	add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
-	add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
+	//add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
+	//add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
 
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
 	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
-	xputs("Nixie board v0.2, Emile, Martijn, Ronald\n");
+	xputs("Nixie board v0.30, Emile, Martijn, Ronald\n");
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); 
 	xputs(s);
