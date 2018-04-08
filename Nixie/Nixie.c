@@ -54,12 +54,14 @@ bool          hv_relay_fx;    // fix for hv_relay
 extern char   rs232_inbuf[];          // RS232 input buffer
 
 //---------------------------------------------------------------------------
+// Bits 39..32: Decimal points:  -    -    -    -   LDP1 LDP2 LDP3 LDP4
 // Bits 31..24: Decimal points: LDP5 LDP3 RDP6 RDP5 RDP4 RDP3 RDP2 RDP1
 // Bits 23..16: Hours         : HHD  HHC  HHB  HHA  HLD  HLC  HLB  HLA 
 // Bits 15..08: Minutes       : MHD  MHC  MHB  MHA  MLD  MLC  MLB  MLA
 // Bits 07..00: Seconds       : SHD  SHC  SHB  SHA  SLD  SLC  SLB  SLA
 //---------------------------------------------------------------------------
-unsigned long int nixie_bits = 0UL;
+uint32_t nixie_bits  = 0UL;
+uint8_t  nixie_bits8 = 0UL;
 uint8_t           rgb_colour = BLACK;
 
 /*------------------------------------------------------------------
@@ -318,8 +320,10 @@ void bmp180_task(void)
 void update_nixies(void)
 {
 	uint8_t         i, x;
-	uint32_t        mask = 0x80000000; // start with MSB
-	uint32_t        bitstream;         // copy of nixie_bits
+	uint32_t        mask;        // start with MSB
+	uint8_t         mask8;
+	uint32_t        bitstream;   // copy of nixie_bits
+	uint8_t         bitstream8;  // copy of nixie_bits8
 	static uint8_t  wheel_cnt_sec = 0, wheel_cnt_min = 0;
 	static uint8_t  bits_min_old, bits_sec_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
@@ -328,6 +332,7 @@ void update_nixies(void)
 	//PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
 	
 	bitstream = nixie_bits; // copy original bitstream
+	bitstream8 = nixie_bits8; // copy original bitstream
 	if (display_time)
 	{
 		//------------------------------------------
@@ -396,6 +401,18 @@ void update_nixies(void)
 	//------------------------------------------
 	// Now send the nixie bitstream to hardware
 	//------------------------------------------
+	mask8 = 0x80;
+	for (i = 0; i < 8; i++)
+	{
+		PORTD &= ~(SHCP|STCP); // set clocks to 0
+		if ((bitstream8 & mask8) == mask8)
+		PORTD |=  SDIN; // set SDIN to 1
+		else PORTD &= ~SDIN; // set SDIN to 0
+		mask >>= 1;     // shift right 1
+		PORTD |=  SHCP; // set clock to 1
+		PORTD &= ~SHCP; // set clock to 0 again
+	}
+	mask = 0x80000000;
 	for (i = 0; i < 32; i++)
 	{
 		PORTD &= ~(SHCP|STCP); // set clocks to 0

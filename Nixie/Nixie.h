@@ -66,17 +66,23 @@
 #define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
 #define WH_MAX          (10)
 
-//------------------------
-// Nixie Decimal Points
-//------------------------
+//-----------------------------------
+// Nixie Decimal Points:
+// 1:HH, 2:HL, 3:MH, 4:ML, 5:SH, 6:SL
+//-----------------------------------
+#define LEFT_DP1  (0x08)
+#define LEFT_DP2  (0x04)
+#define LEFT_DP3  (0x02)
+#define LEFT_DP4  (0x01)
+
 #define LEFT_DP5  (0x80000000)
-#define LEFT_DP3  (0x40000000)
-#define RIGHT_DP6 (0x20000000)
-#define RIGHT_DP5 (0x10000000)
-#define RIGHT_DP4 (0x08000000)
-#define RIGHT_DP3 (0x04000000)
-#define RIGHT_DP2 (0x02000000)
-#define RIGHT_DP1 (0x01000000)
+#define LEFT_DP6  (0x40000000)
+#define RIGHT_DP1 (0x20000000)
+#define RIGHT_DP2 (0x10000000)
+#define RIGHT_DP3 (0x08000000)
+#define RIGHT_DP4 (0x04000000)
+#define RIGHT_DP5 (0x02000000)
+#define RIGHT_DP6 (0x01000000)
 
 //------------------------
 // BMP180 STD Defines
