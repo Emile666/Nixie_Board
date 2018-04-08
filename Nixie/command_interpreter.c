@@ -35,6 +35,9 @@ extern  uint8_t col_humi;
 extern  uint8_t col_dewp;
 extern  uint8_t col_pres;
 extern  uint8_t col_roll;
+extern  bool    hv_relay_sw;  // switch for hv_relay
+extern  bool    hv_relay_fx;  // fix for hv_relay
+
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -248,6 +251,25 @@ uint8_t execute_single_command(char *s)
 							  break;
 				 } // switch
 				 break;
+
+	   case 'v': // Vx: switch high-voltage relay
+				 switch (num)
+				 {
+					 case 0: // manual mode, disable high-voltage relay
+					         hv_relay_sw = true;  // manual mode
+							 hv_relay_fx = false; // relay off
+							 break;
+					 case 1: // manual mode, enable high-voltage relay
+							 hv_relay_sw = true;  // manual mode
+							 hv_relay_fx = true;  // relay on
+							 break;
+					 case 2: // automatic mode
+							 hv_relay_sw = false;  // auto mode
+							 break;
+					 default:
+							 rval = ERR_NUM;
+							 break;
+				 } // switch
 
 	   case 'w': // Set wheel-effect
 				if (num > 2)
