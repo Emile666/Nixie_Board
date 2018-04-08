@@ -12,11 +12,11 @@
 // Dig.05 SDIN           (T1) PD5 [08]    [23] PC4 (ADC4/SDA) SDA   analog 4
 // Dig.06 STCP         (AIN0) PD6 [09]    [22] PC3 (ADC3)     - - - analog 3
 // Dig.07 SHCP         (AIN1) PD7 [10]    [21] PC2 (ADC2)     - - - analog 2
-// Dig.08 WS2812_DI    (ICP1) PB0 [11]    [20] PC1 (ADC1)     - - - analog 1
-// Dig.09 HV_ON        (OC1A) PB1 [12]    [19] PC0 (ADC0)     - - - analog 0
-// Dig.10 - - -        (OC1B) PB2 [13]    [18] AREF
+// Dig.08 RGB_R        (ICP1) PB0 [11]    [20] PC1 (ADC1)     - - - analog 1
+// Dig.09 RGB_G        (OC1A) PB1 [12]    [19] PC0 (ADC0)     - - - analog 0
+// Dig.10 RGB_B        (OC1B) PB2 [13]    [18] AREF
 // Dig.11 IR_RCV   (MOSI/OC2) PB3 [14]    [17] 3V3
-// Dig.12 - - -        (MISO) PB4 [15]    [16] PB5 (SCK)      TIME_MEAS Dig.13
+// Dig.12 DHT22        (MISO) PB4 [15]    [16] PB5 (SCK)      TIME_MEAS Dig.13
 //                               -----USB----
 //                               Arduino NANO
 // $Id: Nixie.h,v 1.1 2016/05/07 09:37:27 Emile Exp $
@@ -40,8 +40,9 @@
 #define TIME_MEAS (0x20)
 #define DHT22     (0x10)
 #define IR_RCV    (0x08)
-#define HV_ON     (0x02)
-#define WS2812_DI (0x01)
+#define RGB_B     (0x04)
+#define RGB_G     (0x02)
+#define RGB_R     (0x01)
 
 //------------------------
 // PORTD Defines
@@ -85,28 +86,5 @@
 #define S180_GET_T   (1)
 #define S180_START_P (2)
 #define S180_GET_P   (3)
-
-//-----------------------------------------------------------------------------------------------
-// https://wp.josh.com/2014/05/13/ws2812-neopixels-are-not-so-finicky-once-you-get-to-know-them/
-//
-// At 16 MHz, 1 NOP is approx. 62.5 nsec.
-//
-// Symbol Parameter	                Min	Typical	Max	Units Measured
-// T0H	  0 code ,high voltage time	200	350	500	ns    360..400
-// T1H	  1 code ,high voltage time	550	700	5.500	ns    760
-// TLD	  data, low voltage time	450	600	5.000	ns    1120
-// TLL	  latch, low voltage time	6.000			ns    3120 (max)
-//
-//-----------------------------------------------------------------------------------------------
-#define NR_LEDS   (6)
-#define wait_T0H  asm("nop\n nop\n nop\n nop\n nop")
-#define wait_T1H  wait_T0H; wait_T0H; asm("nop")
-
-#define ws2812b_send_1   PORTB |=  WS2812_DI; /* WS2812_DI == 1 */  \
-						 wait_T1H;                                  \
-						 PORTB &= ~WS2812_DI; /* WS2812_DI == 0 */
-#define ws2812b_send_0   PORTB |=  WS2812_DI; /* WS2812_DI == 1 */  \
-						 wait_T0H;                                  \
-						 PORTB &= ~WS2812_DI; /* WS2812_DI == 0 */
 
 #endif
