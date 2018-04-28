@@ -379,7 +379,7 @@ void std_cmd(void)
 								cmd_state = CMD_DATE;
 								
 							}
-							else if (ir_remote_key == IR_3)		 // #3 - Set Nixie in Life Time Save mode (LST)
+							else if (ir_remote_key == IR_7)		 // #3 - Set Nixie in Life Time Save mode (LST)
 							{
 								//idx  = 0;
 								if (nixie_lifetimesaver == false)
@@ -398,7 +398,7 @@ void std_cmd(void)
 								cmd_state = NO_CMD;
 							}
 
-							else if (ir_remote_key == IR_4)		// #4 - Override Blanking / LST
+							else if (ir_remote_key == IR_8)		// #4 - Override Blanking / LST
 							{
 								idx = 0;
 								if (override_lifetimesaver == false)
