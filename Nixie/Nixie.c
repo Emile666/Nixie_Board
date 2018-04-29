@@ -1,15 +1,7 @@
 //-----------------------------------------------------------------------------
 // Created: 07/12/2011 15:17:35
 // Author : Emile
-// File   : $Id: Nixie.c,v 1.1 2016/05/07 09:37:27 Emile Exp $
-//-----------------------------------------------------------------------------
-// $Log: Nixie.c,v $
-// Revision 1.1  2016/05/07 09:37:27  Emile
-// - Project restructure
-//
-// Revision 1.1.1.1  2016/05/07 08:50:25  Emile
-// - Initial version for 1st time check-in to CVS.
-//
+// File   : Nixie.c
 //-----------------------------------------------------------------------------
 #include <avr/io.h>
 #include <util/atomic.h>
@@ -20,7 +12,6 @@
 #include "i2c.h"
 #include "command_interpreter.h"
 #include "dht22.h"
-#include "bmp180.h"
 #include "eep.h"
 
 uint8_t       test_nixies = false;   // S3 command
@@ -54,15 +45,17 @@ bool          hv_relay_fx;    // fix for hv_relay
 extern char   rs232_inbuf[];          // RS232 input buffer
 
 //---------------------------------------------------------------------------
+// Copy to hardware PVB v0.21: MSB (bit 39) first --> LSB (bit 00)
+//
 // Bits 39..32: Decimal points:  -    -    -    -   LDP1 LDP2 LDP3 LDP4
-// Bits 31..24: Decimal points: LDP5 LDP3 RDP6 RDP5 RDP4 RDP3 RDP2 RDP1
-// Bits 23..16: Hours         : HHD  HHC  HHB  HHA  HLD  HLC  HLB  HLA 
-// Bits 15..08: Minutes       : MHD  MHC  MHB  MHA  MLD  MLC  MLB  MLA
-// Bits 07..00: Seconds       : SHD  SHC  SHB  SHA  SLD  SLC  SLB  SLA
+// Bits 31..24: Decimal points: LDP5 LDP6 RDP1 RDP2 RDP3 RDP4 RDP5 RDP6
+// Bits 23..16: Hours         : SLD  SLC  SLB  SLA  SHD  SHC  SHB  SHA 
+// Bits 15..08: Minutes       : MLD  MLC  MLB  MLA  MHD  MHC  MHB  MHA
+// Bits 07..00: Seconds       : HLD  HLC  HLB  HLA  HHD  HHC  HHB  HHA
 //---------------------------------------------------------------------------
 uint32_t nixie_bits  = 0UL;
 uint8_t  nixie_bits8 = 0UL;
-uint8_t           rgb_colour = BLACK;
+uint8_t  rgb_colour  = BLACK;
 
 /*------------------------------------------------------------------
   Purpose  : This function returns the number of milliseconds since
@@ -258,57 +251,6 @@ void dht22_task(void)
   ------------------------------------------------------------------------*/
 void bmp180_task(void)
 {
-	static uint8_t std180 = S180_START_T;
-	char   s[30];
-	bool   err;
-	
-	switch (std180)
-	{
-		case S180_START_T:
-			err = bmp180_start_temperature();
-			if (err) xputs("bmp180: start_T err\n");
-			else std180 = S180_GET_T;
-			break;
-
-		case S180_GET_T:
-			err = bmp180_get_temperature(&bmp180_temp);
-			if (err) std180 = S180_START_T;
-			else     std180 = S180_START_P;
-#ifdef DEBUG_SENSORS
-			xputs("bmp180: ");
-			if (err) xputs("Terr\n");
-			else
-			{
-				sprintf(s,"%4.1f °C\n",bmp180_temp);
-				xputs(s);
-			} // else
-#endif
-			break;
-			
-		case S180_START_P:
-			err = bmp180_start_pressure(BMP180_COMMAND_PRESSURE3);
-			if (err) 
-			{
-				 xputs("start_P err\n");
-				 std180 = S180_START_T;
-			} // if
-			else std180 = S180_GET_P;
-			break;
-
-		case S180_GET_P:
-			err = bmp180_get_pressure(&bmp180_pressure,bmp180_temp);
-			std180 = S180_START_T;
-#ifdef DEBUG_SENSORS
-			xputs("bmp180: ");
-			if (err) xputs("Perr\n");
-			else
-			{
-				sprintf(s,"%4.1f mbar\n",bmp180_pressure);
-				xputs(s);
-			} // else
-#endif
-			break;
-	} // switch
 } // bmp180_task()
 
 /*------------------------------------------------------------------------
@@ -331,7 +273,18 @@ void update_nixies(void)
 	//PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
 	//PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
 	
-	bitstream = nixie_bits; // copy original bitstream
+	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
+	// Needed for PCB hardware v0.21 and higher
+	// nixie_bits: LDP RDP HH HL MH ML SH SL
+	// hardware  : LDP RDP SL SH ML MH HL HH
+	bitstream  = (nixie_bits & 0xFF000000); // copy LDP and RDP bits
+	bitstream |= (nixie_bits & 0x0000000F) << 20; // SL
+	bitstream |= (nixie_bits & 0x000000F0) << 12; // SH
+	bitstream |= (nixie_bits & 0x00000F00) <<  4; // ML
+	bitstream |= (nixie_bits & 0x0000F000) >>  4; // MH
+	bitstream |= (nixie_bits & 0x000F0000) >> 12; // HL
+	bitstream |= (nixie_bits & 0x00F00000) >> 20; // HH
+	
 	bitstream8 = nixie_bits8; // copy original bitstream
 	if (display_time)
 	{
@@ -350,7 +303,7 @@ void update_nixies(void)
 						bitstream |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
 						if (++wheel_cnt_min > WH_MAX-1) wheel_cnt_min = WH_MAX-1;
 					} // if
-					else wheel_cnt_min = 0; // reset for next minute
+					else wheel_cnt_min = 0; // reset for next wheel-effect
 					break;
 			case 2: // wheel-effect on every change in minutes
 					if (x != bits_min_old)
@@ -369,7 +322,7 @@ void update_nixies(void)
 		//------------------------------------------
 		// Rotate the SECONDS digits (wheel-effect)
 		//------------------------------------------
-		x = (uint8_t)(bitstream & 0x000000FF); // isolate seconds digits
+		x = (uint8_t)((bitstream & 0x00FF0000) >> 16); // isolate seconds digits
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
@@ -378,7 +331,7 @@ void update_nixies(void)
 			case 1: // wheel-effect from 59 -> 0
 				if (x == 0)
 				{	// seconds == 0, wheel-effect
-					bitstream |= wheel[wheel_cnt_sec];
+					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
 					if (++wheel_cnt_sec > WH_MAX-1) wheel_cnt_sec = WH_MAX-1;
 				} // if
 				else wheel_cnt_sec = 0; // reset for next second
@@ -386,8 +339,8 @@ void update_nixies(void)
 			case 2: // wheel-effect on every change in seconds
 				if (x != bits_sec_old)
 				{	// change in seconds
-					bitstream   &= 0xFFFFFF00; // clear seconds bits
-					bitstream   |= wheel[wheel_cnt_sec];
+					bitstream &= 0x00FF0000; // clear seconds bits
+					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
 					if (++wheel_cnt_sec > WH_MAX-1)
 					{
 						wheel_cnt_sec = WH_MAX-1;
@@ -398,9 +351,10 @@ void update_nixies(void)
 				break;
 		} // switch
 	} // if	
-	//------------------------------------------
-	// Now send the nixie bitstream to hardware
-	//------------------------------------------
+	//--------------------------------------------------
+	// Now send the first 8 nixie-bits to hardware
+	// Bit-order: X X X X LDP1 LDP2 LDP3 LDP4
+	//--------------------------------------------------
 	mask8 = 0x80;
 	for (i = 0; i < 8; i++)
 	{
@@ -412,6 +366,9 @@ void update_nixies(void)
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
 	}
+	//--------------------------------------------------
+	// Now send the remaining 32 nixie-bits to hardware
+	//--------------------------------------------------
 	mask = 0x80000000;
 	for (i = 0; i < 32; i++)
 	{
@@ -508,11 +465,12 @@ void display_task(void)
 	Time    p; // Time struct
 	uint8_t x;
 	
-	nixie_bits = 0x00000000; // clear all bits
+	nixie_bits  = 0x00000000; // clear all bits
+	nixie_bits8 = 0x00;       // clear upper 8 bits
 	ds3231_gettime(&p);
 	display_time = false; // start with no-time on display
 	if (test_nixies) ftest_nixies(); // S3 command
-	if (hv_relay_sw)
+	else if (hv_relay_sw)
 	{   // V0 or V1 command
 		if (hv_relay_fx)
 		     PORTB |=  HV_ON; // relay on
@@ -601,12 +559,13 @@ void display_task(void)
 			nixie_bits |= encode_to_bcd(p.sec);
 			if (p.sec == 0) rgb_colour = col_roll;
 			else            rgb_colour = col_time;
-			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
-			else              nixie_bits |=  LEFT_DP5;
-			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
-			else              nixie_bits |=  LEFT_DP3;
-			if (dst_active)   nixie_bits |=  RIGHT_DP6;
-			else              nixie_bits &= ~RIGHT_DP6;
+			// NOTE: LEFT_DP1..LEFT_DP1 are contained in upper 8 bits!
+			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
+			else              nixie_bits  |=  LEFT_DP5;
+			if (p.min & 0x01) nixie_bits  |=  RIGHT_DP2;
+			else              nixie_bits8 |=  LEFT_DP3;
+			if (dst_active)   nixie_bits  |=  RIGHT_DP6;
+			else              nixie_bits  &= ~RIGHT_DP6;
 			break;
 	  } // switch
 	} // else
@@ -662,7 +621,7 @@ int main(void)
 	// Initialize Serial Communication, See usart.h for BAUD
 	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
 	usart_init(MYUBRR); // Initializes the serial communication
-	bmp180_init();      // Init. the BMP180 sensor
+	//bmp180_init();      // Init. the BMP180 sensor
 	
 	// Add tasks for task-scheduler here
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.

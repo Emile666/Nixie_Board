@@ -35,7 +35,6 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
-../bmp180.c \
 ../command_interpreter.c \
 ../dht22.c \
 ../eep.c \
@@ -53,7 +52,6 @@ ASM_SRCS +=
 
 
 OBJS +=  \
-bmp180.o \
 command_interpreter.o \
 dht22.o \
 eep.o \
@@ -65,7 +63,6 @@ usart.o
 
 
 OBJS_AS_ARGS +=  \
-bmp180.o \
 command_interpreter.o \
 dht22.o \
 eep.o \
@@ -77,7 +74,6 @@ usart.o
 
 
 C_DEPS +=  \
-bmp180.d \
 command_interpreter.d \
 dht22.d \
 eep.d \
@@ -89,7 +85,6 @@ usart.d
 
 
 C_DEPS_AS_ARGS +=  \
-bmp180.d \
 command_interpreter.d \
 dht22.d \
 eep.d \
@@ -109,8 +104,6 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
-
-
 
 
 
