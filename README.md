@@ -1,4 +1,4 @@
-# Nixie Hardware and Software
+# Nixie_SW
 Arduino Nano firmware for Nixie_PCB
 
 ![frontpanel](img/Nixie_board.jpg)<br>
@@ -14,7 +14,6 @@ The Nixie-boards are connected through standard 2x7 pins female connectors to th
 
 The firmware contains the following features: UART (via USB) interrupt-driven communication, command-interpreter, infrared communication, I2C communication and a task-scheduler (non pre-emptive).
 
-# Software Development Environment
 Use with Atmel Studio v6 or higher.
 
 # User Guide

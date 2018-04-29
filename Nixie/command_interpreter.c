@@ -22,7 +22,8 @@
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
 extern  uint8_t rgb_colour;
-extern  uint8_t test_nixies;
+extern bool test_nixies;
+
 extern  uint8_t blank_begin_h;
 extern  uint8_t blank_begin_m;
 extern  uint8_t blank_end_h;
@@ -37,6 +38,7 @@ extern  uint8_t col_pres;
 extern  uint8_t col_roll;
 extern  bool    hv_relay_sw;  // switch for hv_relay
 extern  bool    hv_relay_fx;  // fix for hv_relay
+
 
 
 /*-----------------------------------------------------------------------------
@@ -94,7 +96,7 @@ void print_dow(uint8_t dow)
 uint8_t execute_single_command(char *s)
 {
    uint8_t  num  = atoi(&s[1]); // convert number in command (until space is found)
-   uint8_t  val;
+   uint8_t  val; 
    uint8_t  rval = NO_ERR;
    char     s2[40]; // Used for printing to RS232 port
    char     *s1;
@@ -107,46 +109,46 @@ uint8_t execute_single_command(char *s)
    {
 	   case 'c': // Set all Colours
 				 val = atoi(&s[3]); // convert number until EOL
-	             switch (num)
+				 switch (num)
 				 {
 					 case 0: // Colour for Time display
-							 col_time = val;
-					         eeprom_write_byte(EEPARB_COL_TIME,val);
-					         break;
+					 col_time = val;
+					 eeprom_write_byte(EEPARB_COL_TIME,val);
+					 break;
 					 case 1: // Colour for Date & Year display
-							 col_date = val;
-							 eeprom_write_byte(EEPARB_COL_DATE,val);
-							 break;
+					 col_date = val;
+					 eeprom_write_byte(EEPARB_COL_DATE,val);
+					 break;
 					 case 2: // Colour for Temperature display
-							 col_temp = val;
-							 eeprom_write_byte(EEPARB_COL_TEMP,val);
-							 break;
+					 col_temp = val;
+					 eeprom_write_byte(EEPARB_COL_TEMP,val);
+					 break;
 					 case 3: // Colour for Humidity display
-							 col_humi = val;
-							 eeprom_write_byte(EEPARB_COL_HUMI,val);
-							 break;
+					 col_humi = val;
+					 eeprom_write_byte(EEPARB_COL_HUMI,val);
+					 break;
 					 case 4: // Colour for Dew-point display
-							 col_dewp = val;
-							 eeprom_write_byte(EEPARB_COL_DEWP,val);
-							 break;
+					 col_dewp = val;
+					 eeprom_write_byte(EEPARB_COL_DEWP,val);
+					 break;
 					 case 5: // Colour for Pressure display
-							 col_pres = val;
-							 eeprom_write_byte(EEPARB_COL_PRES,val);
-							 break;
+					 col_pres = val;
+					 eeprom_write_byte(EEPARB_COL_PRES,val);
+					 break;
 					 case 6: // Colour for seconds rollover display
-							 col_roll = val;
-							 eeprom_write_byte(EEPARB_COL_ROLL,val);
-							 break;
+					 col_roll = val;
+					 eeprom_write_byte(EEPARB_COL_ROLL,val);
+					 break;
 					 default: rval = ERR_NUM;
-							 break;
+					 break;
 				 } // switch
 				 sprintf(s,"col[%d]=%d\n",num,val); xputs(s);
-	             break;	
-				 
+				 break;
+
 	   case 'd': // Set Date and Time
 				 switch (num)
 				 {
-					 case 0: // Set Date
+					case 0: // Set Date
 							s1 = strtok(&s[3],":-");
 							d  = atoi(s1);
 							s1 = strtok(NULL ,":-");
@@ -159,7 +161,8 @@ uint8_t execute_single_command(char *s)
 							xputs(s2);
 							ds3231_setdate(d,m,y); // write to DS3231 IC
 							break;
-					 case 1: // Set Time
+							
+					case 1: // Set Time
 							s1 = strtok(&s[3],":-.");
 							h  = atoi(s1);
 							s1 = strtok(NULL ,":-.");
@@ -170,14 +173,16 @@ uint8_t execute_single_command(char *s)
 							xputs(s2);
 							ds3231_settime(h,m,sec); // write to DS3231 IC
 							break;
-					 case 2: // Get Date & Time
+							
+					case 2: // Get Date & Time
 							 ds3231_gettime(&p);
 							 xputs("DS3231: ");
 							 print_dow(p.dow);
-							 sprintf(s2," %02d-%02d-%d, %02d:%02d.%02d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+							 sprintf(s2," %02d-%02d-%d, %02d:%02d:%02d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
 							 xputs(s2);
 							 break;
-					 case 3: // Get Temperature
+							 
+					case 3: // Get Temperature
 							 temp = ds3231_gettemp();
 							 sprintf(s2,"DS3231: %d.",temp>>2);
 							 xputs(s2);
@@ -189,54 +194,56 @@ uint8_t execute_single_command(char *s)
 								 case 3: xputs("75 °C\n"); break;
 							 } // switch
 							 break;
-					 case 4: // Set Start-Time for blanking Nixies
-							 s1 = strtok(&s[3],":-.");
-							 h  = atoi(s1);
-							 s1 = strtok(NULL ,":-.");
-							 m  = atoi(s1);
-							 if ((h < 24) && (m < 60))
-							 {
+							 
+					case 4: // Set Start-Time for blanking Nixies
+							s1 = strtok(&s[3],":-.");
+							h  = atoi(s1);
+							s1 = strtok(NULL ,":-.");
+							m  = atoi(s1);
+							if ((h < 24) && (m < 60))
+							{
 								blank_begin_h = h;
 								blank_begin_m = m;
-								write_eeprom_parameters(); 
-								sprintf(s2,"Time: %02d:%02d\n",h,m);
+								write_eeprom_parameters();
+								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,m);
 								xputs(s2);
-							 } // if
-							 break;
-					 case 5: // Set End-Time for blanking Nixies
-							 s1 = strtok(&s[3],":-.");
-							 h  = atoi(s1);
-							 s1 = strtok(NULL ,":-.");
-							 m  = atoi(s1);
-							 if ((h < 24) && (m < 60))
-							 {
-								 blank_end_h = h;
-								 blank_end_m = m;
-								 write_eeprom_parameters();
-								 sprintf(s2,"Time: %02d:%02d\n",h,m);
-								 xputs(s2);
-							 } // if
-							 break;
+							} // if
+							break;
+							
+					case 5: // Set End-Time for blanking Nixies
+							s1 = strtok(&s[3],":-.");
+							h  = atoi(s1);
+							s1 = strtok(NULL ,":-.");
+							m  = atoi(s1);
+							if ((h < 24) && (m < 60))
+							{
+								blank_end_h = h;
+								blank_end_m = m;
+								write_eeprom_parameters();
+								sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,m);
+								xputs(s2);
+							} // if
+							break;		 
+							 
 					 default: rval = ERR_NUM;
 							  break;
 				 } // switch
 				 break;
 				 
-	   case 'e': // E0: reset EEPROM
-				 if (num > 0)
-				 rval       = ERR_NUM;
-				 else 
-				 {
-					 eeprom_write_byte(EEPARB_INIT, NO_INIT); // Eeprom init. flag;
-					 xputs("EEPROM reset\n");
-				 } // else					
+	   case 'l': // Set RGB LED [0..7]
+				 if (num > 7) 
+				      rval       = ERR_NUM;
+				 else rgb_colour = num;
 				 break;
 				 
 	   case 's': // System commands
 				 switch (num)
 				 {
 					 case 0: // revision
-							 xputs("Nixie board v0.1\n");
+							 xputs("\n");
+							 xputs("Nixie board v0.2\n");
+							 xputs("Manufactured by X-Lent Electronics and vdLogt\n");
+							 xputs("Copyright protected by Dutch law\n");
 							 break;
 					 case 1: // List all I2C devices
 					         i2c_scan();
@@ -272,15 +279,15 @@ uint8_t execute_single_command(char *s)
 				 } // switch
 
 	   case 'w': // Set wheel-effect
-				if (num > 2)
-				rval = ERR_NUM;
-				else 
-				{
-					wheel_effect = num;
-					eeprom_write_byte(EEPARB_WHEEL,wheel_effect);
-				} // else				
-				break;
-	   
+				 if (num > 2)
+					rval = ERR_NUM;
+				 else
+				 {
+				     wheel_effect = num;
+					 eeprom_write_byte(EEPARB_WHEEL,wheel_effect);
+				 } // else
+				 break;	
+
 	   default: rval = ERR_CMD;
 				sprintf(s2,"ERR.CMD[%s]\n",s);
 				xputs(s2);

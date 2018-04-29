@@ -10,10 +10,10 @@
 // Dig.03 - - -        (INT1) PD3 [06]    [25] PC1 (ADC6)     - - - analog 6
 // Dig.04 - - -      (XCK/TO) PD4 [07]    [24] PC5 (ADC5/SCL) SCL   analog 5
 // Dig.05 SDIN           (T1) PD5 [08]    [23] PC4 (ADC4/SDA) SDA   analog 4
-// Dig.06 STCP         (AIN0) PD6 [09]    [22] PC3 (ADC3)     - - - analog 3
-// Dig.07 SHCP         (AIN1) PD7 [10]    [21] PC2 (ADC2)     - - - analog 2
-// Dig.08 WS2812_DI    (ICP1) PB0 [11]    [20] PC1 (ADC1)     - - - analog 1
-// Dig.09 HV_ON        (OC1A) PB1 [12]    [19] PC0 (ADC0)     - - - analog 0
+// Dig.06 STCP         (AIN0) PD6 [09]    [22] PC3 (ADC3)     - - - IN-19A RGB   Dig.17
+// Dig.07 SHCP         (AIN1) PD7 [10]    [21] PC2 (ADC2)     - - - IN-19A Deg C Dig.16
+// Dig.08 WS2812_DI    (ICP1) PB0 [11]    [20] PC1 (ADC1)     - - - IN-19A P     Dig.15
+// Dig.09 HV_ON        (OC1A) PB1 [12]    [19] PC0 (ADC0)     - - - IN-19A %     Dig.14
 // Dig.10 - - -        (OC1B) PB2 [13]    [18] AREF
 // Dig.11 IR_RCV   (MOSI/OC2) PB3 [14]    [17] 3V3
 // Dig.12 - - -        (MISO) PB4 [15]    [16] PB5 (SCK)      TIME_MEAS Dig.13
@@ -27,12 +27,15 @@
 // Revision 1.1.1.1  2016/05/07 08:50:25  Emile
 // - Initial version for 1st time check-in to CVS.
 //
+// Revision 1.2.0.0  2016/07/09 21:39:30  Ronald.
+// - Added PORTC Defines  
+//
 //-----------------------------------------------------------------------------
 #ifndef _Nixie_h
 #define _Nixie_h
 
 // Set to 1 to print sensor outputs
-//#define DEBUG_SENSORS (1)
+#define DEBUG_SENSORS (1)
 
 //------------------------
 // PORTB Defines
@@ -42,6 +45,14 @@
 #define IR_RCV    (0x08)
 #define HV_ON     (0x02)
 #define WS2812_DI (0x01)
+
+//------------------------
+// PORTC Defines
+//------------------------
+#define HUMIDITYSYMBOL	(0x01)
+#define PRESSURESYMBOL  (0x02)
+#define DEGREESYMBOL	(0x04)
+#define LED_IN19A		(0x08)
 
 //------------------------
 // PORTD Defines
@@ -62,7 +73,7 @@
 #define WHITE       (RED |GREEN|BLUE)
 #define BLACK       (0x00)
 
-#define NIXIE_CLEAR     (10UL)
+#define NIXIE_CLEAR (10UL)
 #define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
 #define WH_MAX          (10)
 
@@ -114,5 +125,10 @@
 #define ws2812b_send_0   PORTB |=  WS2812_DI; /* WS2812_DI == 1 */  \
 						 wait_T0H;                                  \
 						 PORTB &= ~WS2812_DI; /* WS2812_DI == 0 */
+
+//------------------------
+// Temp / Hum / mBar Calibration
+//------------------------
+#define Cal_Hum (100)
 
 #endif
