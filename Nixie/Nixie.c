@@ -319,6 +319,7 @@ void update_nixies(void)
 		// Rotate the MINUTES digits (wheel-effect)
 		//------------------------------------------
 		x = (uint8_t)((nixie_bits & 0x0000FF00) >> 8); // isolate minutes digits
+		
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
@@ -346,6 +347,7 @@ void update_nixies(void)
 					else wheel_cnt_min = 0; // reset for next minute
 					break;
 		} // switch
+		
 		//------------------------------------------
 		// Rotate the SECONDS digits (wheel-effect)
 		//------------------------------------------
@@ -374,11 +376,11 @@ void update_nixies(void)
 						bits_sec_old = x;
 					} // if
 				} // if
-			} // if
-			else wheel_cnt_sec = 0; // reset for next second
+				else wheel_cnt_sec = 0; // reset for next second
 			break;
 		} // switch
 	} // if	
+	
 	//--------------------------------------------------
 	// Now send the first 8 nixie-bits to hardware
 	// Bit-order: X X X X LDP1 LDP2 LDP3 LDP4
@@ -390,10 +392,11 @@ void update_nixies(void)
 		if ((bitstream8 & mask8) == mask8)
 		PORTD |=  SDIN; // set SDIN to 1
 		else PORTD &= ~SDIN; // set SDIN to 0
-		mask >>= 1;     // shift right 1
+		mask8 >>= 1;     // shift right 1
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
-	}
+	} // for i
+	
 	//--------------------------------------------------
 	// Now send the remaining 32 nixie-bits to hardware
 	//--------------------------------------------------
@@ -408,9 +411,11 @@ void update_nixies(void)
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
 	} // for i
+	
 	// Now clock bits from shift-registers to output-registers
 	PORTD |=  STCP; // set clock to 1
 	PORTD &= ~STCP; // set clock to 0 again
+	
 } // update_nixies()
 
 /*------------------------------------------------------------------------
@@ -634,7 +639,8 @@ void display_task(void)
 	  PORTB |=  HV_ON; // relay on	
 	  switch(p.sec)
 	  { 
-		case 25: // display date & month
+		case 15: // display date & month
+		case 16:
 			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
@@ -725,7 +731,7 @@ void display_task(void)
 			//nixie_bits = encode_to_bcd(x);
 			//nixie_bits <<= 4;
 			//nixie_bits |= (dht22_temp - 10 * x);
-			nixie_bits |= RIGHT_DP5;
+			nixie_bits |= LEFT_DP6;
 			
 			PORTC &=~(0x0F);
 			PORTC |= DEGREESYMBOL;
@@ -764,7 +770,7 @@ void display_task(void)
 			nixie_bits <<= 4;
 			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
 			nixie_bits |= x;
-			nixie_bits |= RIGHT_DP5;
+			nixie_bits |= LEFT_DP6;
 
 			PORTC &=~(0x0F);
 			PORTC |= PRESSURESYMBOL;
@@ -803,12 +809,16 @@ void display_task(void)
 				rgb_colour = YELLOW;
 			}
 			// NOTE: LEFT_DP1..LEFT_DP1 are contained in upper 8 bits!
-			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
-			else              nixie_bits  |=  LEFT_DP5;
-			if (p.min & 0x01) nixie_bits  |=  RIGHT_DP2;
-			else              nixie_bits8 |=  LEFT_DP3;
-			if (dst_active)   nixie_bits  |=  RIGHT_DP6;
-			else              nixie_bits  &= ~RIGHT_DP6;
+			//if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
+			//else              nixie_bits  |=  LEFT_DP5;
+			nixie_bits  |=  LEFT_DP5;							// For IN-12B NIXIES the DP lits continue
+			
+			//if (p.min & 0x01) nixie_bits  |=  RIGHT_DP2;
+			//else              nixie_bits8 |=  LEFT_DP3;
+			nixie_bits8 |=  LEFT_DP3;							// For IN-12B NIXIES the DP lits continue		
+			
+			if (dst_active)   nixie_bits  |=  LEFT_DP1;
+			else              nixie_bits  &= ~LEFT_DP1;
 			break;
 	  } // switch
 	} // else
@@ -916,15 +926,15 @@ void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 	} //switch
 
 	nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
+	nixie_bits8 &= 0x00;	  // Clear LEFT_DP1 to LEFT_DP4	
+	nixie_bits8 = (LEFT_DP3 | LEFT_DP5);
 	
 	if (z == 'T')
 	{
-		nixie_bits |=(RIGHT_DP2 | LEFT_DP5);
 		rgb_colour = YELLOW;
 	}
 	else if (z == 'D')
 	{
-		nixie_bits |=(LEFT_DP3 | RIGHT_DP4);
 		rgb_colour = GREEN;
 	}
 } // end set_nixie_timedate
@@ -1000,7 +1010,7 @@ int main(void)
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
-	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
+	//dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
 	xputs("Nixie board v0.30, Emile, Martijn, Ronald\n");
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
