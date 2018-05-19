@@ -64,9 +64,9 @@
 //------------------------
 // RGB LED Defines
 //------------------------
-#define RED         (0x01)
-#define GREEN       (0x02)
-#define BLUE        (0x04)
+#define RED         (0xFF)
+#define GREEN       (0xFF)
+#define BLUE        (0xFF)
 #define YELLOW      (RED |GREEN)
 #define CYAN        (BLUE|GREEN)
 #define MAGENTA     (RED | BLUE)

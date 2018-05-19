@@ -27,7 +27,7 @@ int16_t       dht22_temp  = 0;					// Temperature E-1 Celsius
 double        bmp180_pressure = 0.0;			// Pressure E-1 mbar
 double        bmp180_temp     = 0.0;			// Temperature E-1 Celsius
 
-bool          dst_active      = false;		// true = Daylight Saving Time active
+bool          dst_active      = false;			// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
@@ -122,6 +122,27 @@ ISR(TIMER2_COMPA_vect)
 	ir_isr();            // call the ISR routine for the IR-receiver
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
+
+
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine fills the led_<x>[NR_LEDS] array.
+  Variables: ws2812b_red, ws2812b_green, ws2812b_blue : the byte to fill
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812b_blue)
+{
+	uint8_t i;
+	
+	for (i = 0; i < NR_LEDS; i++)
+	{
+		led_g[i] = ws2812b_green;
+		led_r[i] = ws2812b_red;
+		led_b[i] = ws2812b_blue;
+	} // for i
+	
+	ws2812_task();	
+}
+
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine sends one byte to the WS2812B LED-string.
@@ -319,7 +340,6 @@ void update_nixies(void)
 		// Rotate the MINUTES digits (wheel-effect)
 		//------------------------------------------
 		x = (uint8_t)((nixie_bits & 0x0000FF00) >> 8); // isolate minutes digits
-		
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
@@ -347,7 +367,6 @@ void update_nixies(void)
 					else wheel_cnt_min = 0; // reset for next minute
 					break;
 		} // switch
-		
 		//------------------------------------------
 		// Rotate the SECONDS digits (wheel-effect)
 		//------------------------------------------
@@ -385,6 +404,7 @@ void update_nixies(void)
 	// Now send the first 8 nixie-bits to hardware
 	// Bit-order: X X X X LDP1 LDP2 LDP3 LDP4
 	//--------------------------------------------------
+	
 	mask8 = 0x80;
 	for (i = 0; i < 8; i++)
 	{
@@ -395,8 +415,7 @@ void update_nixies(void)
 		mask8 >>= 1;     // shift right 1
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
-	} // for i
-	
+	}
 	//--------------------------------------------------
 	// Now send the remaining 32 nixie-bits to hardware
 	//--------------------------------------------------
@@ -411,11 +430,9 @@ void update_nixies(void)
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
 	} // for i
-	
 	// Now clock bits from shift-registers to output-registers
 	PORTD |=  STCP; // set clock to 1
 	PORTD &= ~STCP; // set clock to 0 again
-	
 } // update_nixies()
 
 /*------------------------------------------------------------------------
@@ -448,7 +465,8 @@ void clear_nixie(uint8_t nr)
 		
 	if (nr == 0)
 	{
-		rgb_colour = BLACK;
+		//rgb_colour = BLACK;
+		ws2812b_fill_rgb(BLACK, BLACK, BLACK);
 		PORTC &= ~(0x0F);
 		
 		for (nr = 1; nr < 7; ++nr)
@@ -520,7 +538,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 42:
 		case 49:
 		case 56: 
-			rgb_colour = WHITE;	
+			//rgb_colour = WHITE;	
+			ws2812b_fill_rgb(RED, GREEN, BLUE);
 			break;
 		case 1:
 		case 8:
@@ -531,7 +550,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 43:
 		case 50:
 		case 57:	
-			rgb_colour = RED;
+			//rgb_colour = RED;
+			ws2812b_fill_rgb(RED, BLACK, BLACK);
 			break;
 		case 2:
 		case 9:
@@ -542,7 +562,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 44:
 		case 51:
 		case 58:
-			rgb_colour = GREEN;
+			//rgb_colour = GREEN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
 			break;
 		case 3:
 		case 10:
@@ -553,7 +574,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 45:
 		case 52:
 		case 59:
-			rgb_colour = BLUE;
+			//rgb_colour = BLUE;
+			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
 			break;
 		case 4:
 		case 11:
@@ -563,7 +585,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 39:
 		case 46:
 		case 53:
-			rgb_colour = YELLOW;
+			//rgb_colour = YELLOW;
+			ws2812b_fill_rgb(RED, GREEN, BLACK);
 			break;
 		case 5:
 		case 12:
@@ -573,7 +596,8 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 40:
 		case 47:
 		case 54:
-			rgb_colour = MAGENTA;
+			//rgb_colour = MAGENTA;
+			ws2812b_fill_rgb(RED, BLACK, BLUE);
 			break;
 		case 6:
 		case 13:
@@ -583,10 +607,12 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 		case 41:
 		case 48:
 		case 55:
-			rgb_colour = CYAN;
+			//rgb_colour = CYAN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
 			break;
 		default:
-			rgb_colour = BLACK;
+			//rgb_colour = BLACK;
+			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
 			break;	
 	} // Switch
 } // fixed_random_rgb_colour
@@ -625,6 +651,66 @@ void display_task(void)
 	nixie_bits8 = 0x00;       // clear upper 8 bits
 	ds3231_gettime(&p);
 	display_time = false;     // start with no-time on display
+	
+	
+	if (time_only == true)			// *0 IR remote
+	{
+		y = 0;
+	}
+	else
+	{
+		y = p.sec;
+	}	//End time_only
+
+	
+	if (random_rgb_pattern == true)
+	{
+		fixed_random_rgb_colour(p.sec, true);
+	}
+	else if (fixed_rgb_pattern == true)
+	{
+		fixed_random_rgb_colour(p.sec, false);
+	}
+	else if (default_rgb_pattern == false)
+	{
+		switch (fixed_rgb_colour)
+		{
+			case 0:
+			//rgb_colour = BLACK;
+			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
+			break;
+			case 1:
+			//rgb_colour = RED;
+			ws2812b_fill_rgb(RED, BLACK, BLACK);
+			break;
+			case 2:
+			//rgb_colour = GREEN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+			break;
+			case 3:
+			//rgb_colour = BLUE;
+			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
+			break;
+			case 4:
+			//rgb_colour = YELLOW;
+			ws2812b_fill_rgb(RED, GREEN, BLACK);
+			break;
+			case 5:
+			//rgb_colour = MAGENTA;
+			ws2812b_fill_rgb(RED, BLACK, BLUE);
+			break;
+			case 6:
+			//rgb_colour = CYAN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
+			break;
+			case 7:
+			//rgb_colour = WHITE;
+			ws2812b_fill_rgb(RED, GREEN, BLUE);
+			break;
+		} // End Switch
+	} // End random_rgb_pattern
+	
+	
 	if (test_nixies) ftest_nixies(); // S3 command
 	else if (hv_relay_sw)
 	{   // V0 or V1 command
@@ -651,7 +737,8 @@ void display_task(void)
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = GREEN;
+				//rgb_colour = GREEN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
 			}			
 		
 		break;
@@ -668,7 +755,8 @@ void display_task(void)
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = GREEN;
+				//rgb_colour = GREEN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
 			}
 			
 		break;
@@ -752,7 +840,8 @@ void display_task(void)
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = RED;
+				//rgb_colour = RED;
+				ws2812b_fill_rgb(RED, BLACK, BLACK);
 			}
 			
 		break;
@@ -790,7 +879,8 @@ void display_task(void)
 				
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = CYAN;
+				//rgb_colour = CYAN;
+				ws2812b_fill_rgb(RED, BLACK, BLUE);
 			}
 			
 		break;
@@ -806,19 +896,16 @@ void display_task(void)
 			PORTC &=~(0x0F);
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = YELLOW;
+				//rgb_colour = YELLOW;
+				ws2812b_fill_rgb(RED, GREEN, BLACK);
 			}
-			// NOTE: LEFT_DP1..LEFT_DP1 are contained in upper 8 bits!
-			//if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
-			//else              nixie_bits  |=  LEFT_DP5;
-			nixie_bits  |=  LEFT_DP5;							// For IN-12B NIXIES the DP lits continue
-			
-			//if (p.min & 0x01) nixie_bits  |=  RIGHT_DP2;
-			//else              nixie_bits8 |=  LEFT_DP3;
-			nixie_bits8 |=  LEFT_DP3;							// For IN-12B NIXIES the DP lits continue		
-			
-			if (dst_active)   nixie_bits  |=  LEFT_DP1;
-			else              nixie_bits  &= ~LEFT_DP1;
+			// NOTE: LEFT_DP1..LEFT_DP4 are contained in upper 8 bits!
+			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
+			else              nixie_bits  |=  LEFT_DP5;
+			if (p.min & 0x01) nixie_bits8  =  LEFT_DP3;
+			else              nixie_bits8  =  LEFT_DP3;
+			if (dst_active)   nixie_bits8  |=  LEFT_DP1;
+			else              nixie_bits8  &= ~LEFT_DP1;
 			break;
 	  } // switch
 	} // else
@@ -925,17 +1012,22 @@ void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 		
 	} //switch
 
-	nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
-	nixie_bits8 &= 0x00;	  // Clear LEFT_DP1 to LEFT_DP4	
-	nixie_bits8 = (LEFT_DP3 | LEFT_DP5);
+	//nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
+	nixie_bits8 &= 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
 	
 	if (z == 'T')
 	{
-		rgb_colour = YELLOW;
+		nixie_bits  |= LEFT_DP5;
+		nixie_bits8 |= LEFT_DP3;
+		ws2812b_fill_rgb(RED,GREEN,BLACK); // YELLOW
+		//rgb_colour = YELLOW;
 	}
 	else if (z == 'D')
 	{
-		rgb_colour = GREEN;
+		nixie_bits  |= LEFT_DP5;
+		nixie_bits8 |= LEFT_DP3;
+		ws2812b_fill_rgb(BLACK, GREEN, BLACK); // GREEN
+		//rgb_colour = GREEN;
 	}
 } // end set_nixie_timedate
 
@@ -984,6 +1076,7 @@ Returns  : -
 int main(void)
 {
 	
+	uint8_t i = 0;
 	Time    p; // Time struct
 	char s[20];
 	
@@ -1016,6 +1109,12 @@ int main(void)
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
 	
+	// Set WS2812b RGB Leds to black 
+	ws2812b_fill_rgb(0x00, 0x00, 0x00);
+
+
+	
+	// Main routine 
 	while(1)
 	{   // Run all scheduled tasks here
 		//ds3231_gettime(&p);
