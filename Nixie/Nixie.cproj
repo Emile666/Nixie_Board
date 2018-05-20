@@ -28,15 +28,15 @@
     <BootSegment>2</BootSegment>
     <AsfFrameworkConfig>
       <framework-data>
-  <options />
-  <configurations />
-  <files />
-  <documentation help="" />
-  <offline-documentation help="" />
-  <dependencies>
-    <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.5.0" />
-  </dependencies>
-</framework-data>
+        <options />
+        <configurations />
+        <files />
+        <documentation help="" />
+        <offline-documentation help="" />
+        <dependencies>
+          <content-extension eid="atmel.asf" uuidref="Atmel.ASF" version="3.5.0" />
+        </dependencies>
+      </framework-data>
     </AsfFrameworkConfig>
     <avrtool>com.atmel.avrdbg.tool.simulator</avrtool>
     <com_atmel_avrdbg_tool_simulator>
@@ -106,16 +106,19 @@
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="bme280.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="bme280.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="bme280_defs.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="command_interpreter.c">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="command_interpreter.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="dht22.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="dht22.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="eep.c">

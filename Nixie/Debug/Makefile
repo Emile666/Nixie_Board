@@ -36,8 +36,8 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
+../bme280.c \
 ../command_interpreter.c \
-../dht22.c \
 ../eep.c \
 ../i2c.c \
 ../IRremote.c \
@@ -53,8 +53,8 @@ ASM_SRCS +=
 
 
 OBJS +=  \
+bme280.o \
 command_interpreter.o \
-dht22.o \
 eep.o \
 i2c.o \
 IRremote.o \
@@ -63,8 +63,8 @@ scheduler.o \
 usart.o
 
 OBJS_AS_ARGS +=  \
+bme280.o \
 command_interpreter.o \
-dht22.o \
 eep.o \
 i2c.o \
 IRremote.o \
@@ -73,8 +73,8 @@ scheduler.o \
 usart.o
 
 C_DEPS +=  \
+bme280.d \
 command_interpreter.d \
-dht22.d \
 eep.d \
 i2c.d \
 IRremote.d \
@@ -83,8 +83,8 @@ scheduler.d \
 usart.d
 
 C_DEPS_AS_ARGS +=  \
+bme280.d \
 command_interpreter.d \
-dht22.d \
 eep.d \
 i2c.d \
 IRremote.d \

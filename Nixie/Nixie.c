@@ -11,8 +11,9 @@
 #include "Nixie.h"
 #include "i2c.h"
 #include "command_interpreter.h"
-#include "dht22.h"
+#include "bme280.h"
 #include "eep.h"
+
 
 
 bool		  test_nixies = 0;					// S3 command / IR #9 command
@@ -21,11 +22,12 @@ bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *
 uint8_t		  cnt_60sec   = 0;					// 60 seconds counter during nixie_lts - *1 IR remote 	 	
 uint8_t       cnt_50usec  = 0;					// 50 usec. counter
 unsigned long t2_millis   = 0UL;				// msec. counter
-uint16_t      dht22_hum   = 0;					// Humidity E-1 %
-int16_t       dht22_temp  = 0;					// Temperature E-1 Celsius
+//uint16_t      dht22_hum   = 0;					// Humidity E-1 %
+//int16_t       dht22_temp  = 0;					// Temperature E-1 Celsius
 //int16_t       dht22_dewp  = 0;				// Dewpoint E-1 Celsius
-double        bmp180_pressure = 0.0;			// Pressure E-1 mbar
-double        bmp180_temp     = 0.0;			// Temperature E-1 Celsius
+double        bme280_pressure = 0.0;			// Pressure E-1 mbar
+double        bme280_temp     = 0.0;			// Temperature E-1 Celsius
+double		  bme280_hum	  = 0.0;			// Humidity E-1 %		
 
 bool          dst_active      = false;			// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
@@ -56,6 +58,9 @@ bool          hv_relay_sw;    // switch for hv_relay
 bool          hv_relay_fx;    // fix for hv_relay
 
 extern char   rs232_inbuf[];       // RS232 input buffer
+
+//struct bme280_dev dev;
+
 
 
 
@@ -271,25 +276,25 @@ void check_and_set_summertime(Time p)
   Variables: dht22_humidity, dht22_temperature
   Returns  : -
   ------------------------------------------------------------------------*/
-void dht22_task(void)
-{
-	int8_t x;
-	
-	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
-	//dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
-#ifdef DEBUG_SENSORS
-	char s[30];
-	x = dht22_hum / 10;
-	sprintf(s,"dht22: RH=%d.%d %%, \n",x,dht22_hum-10*x); 
-	xputs(s);
-	x = dht22_temp / 10;
-	//sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
+//void dht22_task(void)
+//{
+	//int8_t x;
+	//
+	//dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
+	////dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
+//#ifdef DEBUG_SENSORS
+	//char s[30];
+	//x = dht22_hum / 10;
+	//sprintf(s,"dht22: RH=%d.%d %%, \n",x,dht22_hum-10*x); 
 	//xputs(s);
-	//x = dht22_dewp / 10;
-	//sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
-	//xputs(s);
-#endif
-} // dht22_task()
+	//x = dht22_temp / 10;
+	////sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
+	////xputs(s);
+	////x = dht22_dewp / 10;
+	////sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
+	////xputs(s);
+//#endif
+//} // dht22_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every second.
@@ -297,7 +302,7 @@ void dht22_task(void)
   Variables: bmp180_pressure, bmp180_temperature
   Returns  : -
   ------------------------------------------------------------------------*/
-void bmp180_task(void)
+void bme280_task(void)
 {
 } // bmp180_task()
 
@@ -492,6 +497,8 @@ void ftest_nixies(void)
 {
 	static uint8_t std_test = 0;
 	
+	uint8_t i;
+	
 	PORTC &=~(0x0F);
 	
 	
@@ -508,6 +515,11 @@ void ftest_nixies(void)
 			case 8: nixie_bits = 0xFF888888; PORTC |= (PRESSURESYMBOL | LED_IN19A); std_test = 9; break;
 			case 9: nixie_bits = 0xFF999999; std_test = 0; break;
 		} // switch
+	
+	
+	
+	
+	
 	
 	//rgb_colour = std_test & 0x07;
 	
@@ -806,13 +818,18 @@ void display_task(void)
 		case 40: // display temperature
 		case 41:
 			
-			x = (uint8_t)bmp180_temp;
+			//x = (uint8_t)bme280_temp;
+			
+			//bme280_temp = bme280_readTemperature();
+			
+			x = bme280_temp * 10;
+			
 			
 			blank_zero = x;
 			
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			nixie_bits |= (uint8_t)(10.0 * (bmp180_temp - x));
+			nixie_bits |= (uint8_t)(10.0 * (bme280_temp - x));
 			//nixie_bits <<= 12;
 			
 			//x = dht22_temp / 10;
@@ -848,16 +865,18 @@ void display_task(void)
 
 		case 50: // display Pressure in mbar
 		case 51:
-			x = (uint8_t)(bmp180_pressure / 100.0);
+			
+			//bme280_pressure = bme280_readPressure();
+			x = (uint8_t)(bme280_pressure / 100.0);
 			
 			blank_zero = x;
 			
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
-			x = (uint8_t)(bmp180_pressure - (int16_t)x * 100);
+			x = (uint8_t)(bme280_pressure - (int16_t)x * 100);
 			nixie_bits |= encode_to_bcd(x);
 			nixie_bits <<= 4;
-			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
+			x = (uint8_t)(10 * (bme280_pressure - (int16_t)bme280_pressure));
 			nixie_bits |= x;
 			nixie_bits |= LEFT_DP6;
 
@@ -1086,6 +1105,9 @@ int main(void)
 	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
 	
 	srand(59);		// Initialize random generator from 0 - 59
+	
+	// BME2080 initialization
+	//bme280_init();
 	
 	
 	// Initialize Serial Communication, See usart.h for BAUD
