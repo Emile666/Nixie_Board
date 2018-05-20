@@ -11,7 +11,7 @@
 #include "Nixie.h"
 #include "i2c.h"
 #include "command_interpreter.h"
-#include "bme280.h"
+//#include "bme280.h"
 #include "eep.h"
 
 
