@@ -1127,7 +1127,7 @@ int main(void)
 	xputs(s);
 	
 	// Set WS2812b RGB Leds to black 
-	ws2812b_fill_rgb(0x00, 0x00, 0x00);
+	ws2812b_fill_rgb(BLACK, BLACK, BLACK);
 
 
 	
