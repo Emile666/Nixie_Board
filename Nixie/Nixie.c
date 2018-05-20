@@ -516,11 +516,6 @@ void ftest_nixies(void)
 			case 9: nixie_bits = 0xFF999999; std_test = 0; break;
 		} // switch
 	
-	
-	
-	
-	
-	
 	//rgb_colour = std_test & 0x07;
 	
 } // ftest_nixies()
@@ -1125,7 +1120,7 @@ int main(void)
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
-	//dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
+	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
 	xputs("Nixie board v0.30, Emile, Martijn, Ronald\n");
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
