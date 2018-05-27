@@ -369,31 +369,3 @@ int16_t ds3231_gettemp(void)
 	if (!err) return retv;
 	else      return 0;
 } // ds3231_gettemp()
-
-// Reads BME280 registers in 8 bits
-uint8_t bme280_read_reg(uint8_t reg)
-{
-
-	bool err;
-	uint8_t x;	
-	
-	// dig_T register lsb = 0x88, msb = 0x89
-	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
-	if (!err) err = (i2c_write(reg) == I2C_NACK); // seconds register is first register to read
-	if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
-	
-	if (!err)
-	{
-		x  = (uint8_t)i2c_readNak();
-		
-		return x;
-	}	
-	else
-	{
-		return 0;
-	}
-	
-
-	
-} // bme280_read_reg
-

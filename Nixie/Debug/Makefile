@@ -35,6 +35,7 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
+../bme280.c \
 ../command_interpreter.c \
 ../eep.c \
 ../i2c.c \
@@ -51,6 +52,7 @@ ASM_SRCS +=
 
 
 OBJS +=  \
+bme280.o \
 command_interpreter.o \
 eep.o \
 i2c.o \
@@ -61,6 +63,7 @@ usart.o
 
 
 OBJS_AS_ARGS +=  \
+bme280.o \
 command_interpreter.o \
 eep.o \
 i2c.o \
@@ -71,6 +74,7 @@ usart.o
 
 
 C_DEPS +=  \
+bme280.d \
 command_interpreter.d \
 eep.d \
 i2c.d \
@@ -81,6 +85,7 @@ usart.d
 
 
 C_DEPS_AS_ARGS +=  \
+bme280.d \
 command_interpreter.d \
 eep.d \
 i2c.d \
@@ -99,6 +104,8 @@ ADDITIONAL_DEPENDENCIES:=
 OUTPUT_FILE_DEP:= ./makedep.mk
 
 # AVR32/GNU C Compiler
+
+
 
 
 

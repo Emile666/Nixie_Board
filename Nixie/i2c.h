@@ -57,23 +57,6 @@
 #define TRUE  (!FALSE)
 #define I2C_RETRIES (3)
 
-// BME280 defines
-#define BME280_ADR				(0xEC)	/* I2C base address with SDO to GND   */
-#define BME280_REG_ID			(0xD0)
-#define BME280_ID_Value			(0x60)
-#define BME280_REG_RESET		(0xE0)
-#define BME280_RESET			(0xB6)
-#define BME280_REG_CONFIG		(0xF5)
-#define BME280_REG_CTRL_MEAS	(0xF4)
-#define BME280_REG_CTRL_HUM		(0xF2)	/* Has to be written before CTRL_MEAS */ 
-#define BME280_OSRS_H			(0x01)	/* Humidity oversampling x1           */		
-#define BME280_OSRS_T			(0x40)	/* Temperature oversampling x2        */
-#define BME280_OSRS_P			(0x14)	/* Pressure oversampling x16          */
-#define BME280_MODE				(0x03)	/* BME280 set to normal mode          */
-#define BME280_T_SB				(0x00)	/* In Normal mode T_standby = 0.5mS   */
-#define BME280_FILTER			(0x10)	/* IIR filter set to x16              */
-
-
 // DS3231 DOW defines
 #define MONDAY		1
 #define TUESDAY		2

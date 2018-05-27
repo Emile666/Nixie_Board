@@ -107,6 +107,12 @@
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="bme280.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="bme280.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="command_interpreter.c">
       <SubType>compile</SubType>
     </Compile>
