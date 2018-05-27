@@ -46,17 +46,20 @@ void bme280_init(void)
 	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
 	if (!err) err = (i2c_write(BME280_REG_ID) == I2C_NACK); // seconds register is first register to read
 	if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
-	
-	sprintf(s2,"Err = %01d\n",err);
-	xputs(s2);
-		
-	if (!err)
+	xputs("bme280_init(): ");
+	if (err)  xputs("i2c-error\n");
+	else      xputs("ok\n");
+	if (!err) 
 	{
 		reg  = (uint8_t)i2c_readNak();		
-		sprintf(s2,"BME280_ID = 0x%02x\n",reg);
-	}
-	else sprintf(s2,"bme280_init() error\n");
-	xputs(s2);
+		xputs("bme280 chip-id: ");
+		if (reg == 0x60) xputs("ok\n");
+		else 
+		{
+			sprintf(s2,"error (0x%x)\n",reg);
+			xputs(s2);
+		} // else
+	} // if	
 	
 	//Perform RESET before setting registers
 	//err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK);			// generate I2C start + output address to I2C bus
@@ -141,7 +144,6 @@ void bme280_init(void)
 //
 
 	
-	bme280_temperature();
 
 
 } // bme280_init()
@@ -152,15 +154,15 @@ void bme280_init(void)
   Variables: bme280_pressure, bme280_temperature
   Returns  : Temperature
   ------------------------------------------------------------------------*/
-void bme280_temperature(void)
+int32_t bme280_temperature(void)
 {
 	uint16_t dig_T1;
 	int16_t  dig_T2;
 	int16_t  dig_T3;
 	int32_t  t_fine;
 	uint32_t adc_T; 
-	int32_t var1, var2;
-	int32_t	T;
+	int32_t  var1, var2;
+	int32_t	 T;
 	
 	uint8_t msb_reg, lsb_reg;
 	uint8_t msb_t, lsb_t, xlsb_t;
@@ -169,28 +171,21 @@ void bme280_temperature(void)
 	// Read dig_T1
 	lsb_reg = (bme280_read_reg(0x88));
 	msb_reg = (bme280_read_reg(0x89));
-	
-	dig_T1 = (msb_reg << 8 | lsb_reg);		
-		
+	dig_T1  = ((uint16_t)msb_reg << 8 | lsb_reg);		
 	sprintf(s2,"dig_T1 = 0x%x\n",dig_T1);
 	xputs(s2);
-	
 	
 	// Read dig_T2
 	lsb_reg = (bme280_read_reg(0x8A));
 	msb_reg = (bme280_read_reg(0x8B));
-		
-	dig_T2 = (msb_reg << 8 | lsb_reg);
-		
+	dig_T2  = ((int16_t)msb_reg << 8 | lsb_reg);
 	sprintf(s2,"dig_T2 = 0x%x\n",dig_T2);
 	xputs(s2);
 	
 	// Read dig_T3
 	lsb_reg = (bme280_read_reg(0x8C));
 	msb_reg = (bme280_read_reg(0x8D));
-		
-	dig_T3 = (msb_reg << 8 | lsb_reg);
-		
+	dig_T3  = ((int16_t)msb_reg << 8 | lsb_reg);
 	sprintf(s2,"dig_T3 = 0x%x\n",dig_T3);
 	xputs(s2);
 	
@@ -207,25 +202,19 @@ void bme280_temperature(void)
 	sprintf(s2,"xlsb_t = %x\n",xlsb_t);
 	xputs(s2);
 
-	adc_T = (msb_t << 12 | lsb_t << 4 | xlsb_t >> 4); 
-	
-	sprintf(s2,"adc_T = %lx\n",adc_T);
+    adc_T  = (xlsb_t >> 4) & 0x0000000F;
+	adc_T |= ((uint32_t)msb_t << 12) | ((uint32_t)lsb_t << 4);
+	sprintf(s2,"adc_T = 0x%lx\n",adc_T);
 	xputs(s2);
 	
 	//Calculate Temperature in 32bit precision
     var1 = ((((adc_T >> 3) - ((int32_t)dig_T1 << 1))) * ((int32_t)dig_T2)) >> 11;
-	
 	var2 = (((((adc_T >> 4) - ((int32_t)dig_T1)) * ((adc_T >> 4) - ((int32_t)dig_T1))) >> 12) * ((int32_t)dig_T3)) >> 14;
-	
 	t_fine = var1 + var2;
-    
     T = ((t_fine * 5 + 128) >> 8);	
-	
-		sprintf(s2,"Temperature = %ld\n",T);
-		xputs(s2);
-	
-	//return T;
-		
+	sprintf(s2,"Temperature = %ld\n",T);
+	xputs(s2);
+	return T;
 } //bme280_temperature
 
 

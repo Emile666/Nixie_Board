@@ -32,6 +32,6 @@
 // Function prototypes
 uint8_t bme280_read_reg(uint8_t reg);
 void    bme280_init(void);
-void    bme280_temperature(void);
+int32_t bme280_temperature(void);
 
 #endif

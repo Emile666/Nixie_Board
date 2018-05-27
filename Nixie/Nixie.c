@@ -258,13 +258,16 @@ void check_and_set_summertime(Time p)
 } // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
-  Purpose  : This task is called by the Task-Scheduler every second.
+  Purpose  : This task is called by the Task-Scheduler every 5 seconds.
              It reads the BME280 pressure and temperature.
   Variables: bme280_pressure, bme280_temperature
   Returns  : -
   ------------------------------------------------------------------------*/
 void bme280_task(void)
 {
+	int32_t temp;
+	
+	temp = bme280_temperature();
 } // bme280_task()
 
 /*------------------------------------------------------------------------
@@ -337,8 +340,8 @@ void update_nixies(void)
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
-			wheel_cnt_sec = 0;
-			break;
+				wheel_cnt_sec = 0;
+				break;
 			case 1: // wheel-effect from 59 -> 0
 				if (x == 0)
 				{	// seconds == 0, wheel-effect
@@ -350,7 +353,7 @@ void update_nixies(void)
 			case 2: // wheel-effect on every change in seconds
 				if (x != bits_sec_old)
 				{	// change in seconds
-					bitstream &= 0x00FF0000; // clear seconds bits
+					bitstream &= 0xFF00FFFF; // clear seconds bits
 					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
 					if (++wheel_cnt_sec > WH_MAX-1)
 					{
@@ -979,7 +982,7 @@ int main(void)
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
 	//add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
-	//add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
+	add_task(bme280_task  ,"BME280" ,250, 5000); // Run BMP180 sensor process every 5 seconds
 	
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
