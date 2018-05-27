@@ -350,8 +350,8 @@ void update_nixies(void)
 			case 2: // wheel-effect on every change in seconds
 				if (x != bits_sec_old)
 				{	// change in seconds
-					bitstream &= 0x0000FFFF; // clear seconds bits
-					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16 );
+					bitstream &= 0x00FF0000; // clear seconds bits
+					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
 					if (++wheel_cnt_sec > WH_MAX-1)
 					{
 						wheel_cnt_sec = WH_MAX-1;
@@ -556,7 +556,7 @@ bool blanking_active(Time p)
 void display_task(void)
 {
 	Time    p; // Time struct
-	uint8_t x, y;
+	uint8_t x, y ;
 	char    s2[40]; // Used for printing to RS232 port
 	uint8_t blank_zero;
 	
