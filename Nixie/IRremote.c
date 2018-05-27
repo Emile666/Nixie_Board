@@ -37,6 +37,7 @@
 #include "usart.h"
 #include "Nixie.h"
 #include "eep.h"
+#include "scheduler.h"
 
 bool time_only = false;					// Shows only time on the Nixies. time_only=false -> date and sensors are displayed
 bool default_rgb_pattern = false;		// Sets the RGB colour to a default pattern
