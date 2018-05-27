@@ -9,15 +9,22 @@
 #include "usart.h"
 #include "IRremote.h"
 #include "Nixie.h"
+#include "i2c.h"
 #include "command_interpreter.h"
 //#include "bme280.h"
 #include "eep.h"
 
+
+
 bool		  test_nixies = 0;					// S3 command / IR #9 command
 bool		  nixie_lifetimesaver = false;		// Toggle nixie's on (false), no LST or off (true), LST active - *3 IR remote
 bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *2 IR remote 	
+uint8_t		  cnt_60sec   = 0;					// 60 seconds counter during nixie_lts - *1 IR remote 	 	
 uint8_t       cnt_50usec  = 0;					// 50 usec. counter
 unsigned long t2_millis   = 0UL;				// msec. counter
+//uint16_t      dht22_hum   = 0;					// Humidity E-1 %
+//int16_t       dht22_temp  = 0;					// Temperature E-1 Celsius
+//int16_t       dht22_dewp  = 0;				// Dewpoint E-1 Celsius
 double        bme280_pressure = 0.0;			// Pressure E-1 mbar
 double        bme280_temp     = 0.0;			// Temperature E-1 Celsius
 double		  bme280_hum	  = 0.0;			// Humidity E-1 %		
@@ -52,10 +59,10 @@ bool          hv_relay_fx;    // fix for hv_relay
 
 extern char   rs232_inbuf[];       // RS232 input buffer
 
-//struct bme280_dev dev;
+
 
 //---------------------------------------------------------------------------
-// Copy to hardware PCB v0.21: MSB (bit 39) first --> LSB (bit 00)
+// Copy to hardware PVB v0.21: MSB (bit 39) first --> LSB (bit 00)
 //
 // Bits 39..32: Decimal points:  -    -    -    -   LDP1 LDP2 LDP3 LDP4
 // Bits 31..24: Decimal points: LDP5 LDP6 RDP1 RDP2 RDP3 RDP4 RDP5 RDP6
@@ -118,6 +125,7 @@ ISR(TIMER2_COMPA_vect)
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
 
+
 /*-----------------------------------------------------------------------------
   Purpose  : This routine fills the led_<x>[NR_LEDS] array.
   Variables: ws2812b_red, ws2812b_green, ws2812b_blue : the byte to fill
@@ -133,8 +141,10 @@ void ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812
 		led_r[i] = ws2812b_red;
 		led_b[i] = ws2812b_blue;
 	} // for i
-	ws2812_send_all();	
-} // ws2812b_fill_rgb()
+	
+	ws2812_task();	
+}
+
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine sends one byte to the WS2812B LED-string.
@@ -168,7 +178,7 @@ void ws2812b_send_byte(uint8_t bt)
       led_b: the blue byte array
   Returns  : -
   ---------------------------------------------------------------------------*/
-void ws2812_send_all(void)
+void ws2812_task(void)
 {
     uint8_t i;
 
@@ -180,7 +190,7 @@ void ws2812_send_all(void)
         ws2812b_send_byte(led_b[i]); // Send one byte of Blue
     } // for i
     sei(); // enable IRQ again
-} // ws2812_send_all()
+} // ws2812_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called every time the time is displayed on the
@@ -258,14 +268,232 @@ void check_and_set_summertime(Time p)
 } // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
+  Purpose  : This task is called by the Task-Scheduler every 5 seconds.
+             It reads the DHT22 sensor Humidity and Temperature
+  Variables: dht22_humidity, dht22_temperature
+  Returns  : -
+  ------------------------------------------------------------------------*/
+//void dht22_task(void)
+//{
+	//int8_t x;
+	//
+	//dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
+	////dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
+//#ifdef DEBUG_SENSORS
+	//char s[30];
+	//x = dht22_hum / 10;
+	//sprintf(s,"dht22: RH=%d.%d %%, \n",x,dht22_hum-10*x); 
+	//xputs(s);
+	//x = dht22_temp / 10;
+	////sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
+	////xputs(s);
+	////x = dht22_dewp / 10;
+	////sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
+	////xputs(s);
+//#endif
+//} // dht22_task()
+
+/*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every second.
              It reads the BME280 pressure and temperature.
   Variables: bme280_pressure, bme280_temperature
   Returns  : -
   ------------------------------------------------------------------------*/
-void bme280_task(void)
+void bme280_init(void)
 {
-} // bme280_task()
+	
+	bool err;
+	uint8_t reg;
+	char s2[40];
+	int32_t temperature;
+
+	// BME280 initialization. (BME280_REG_ID) 
+	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
+	if (!err) err = (i2c_write(BME280_REG_ID) == I2C_NACK); // seconds register is first register to read
+	if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
+	
+	sprintf(s2,"Err = %01d\n",err);
+	xputs(s2);
+		
+	if (!err)
+	{
+		reg  = (uint8_t)i2c_readNak();		
+	}
+	
+	sprintf(s2,"BME280_ID = 0x%02x\n",reg);
+	xputs(s2);
+	
+	//Perform RESET before setting registers
+	//err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK);			// generate I2C start + output address to I2C bus
+	//if (!err) err = (i2c_write(BME280_REG_RESET) == I2C_NACK);		// write register address to write to
+	//if (!err) err = (i2c_write(BME280_RESET) == I2C_NACK);			// write value into register
+	//i2c_stop();														// close I2C bus		
+	//
+	//sprintf(s2,"BME280_RESET = 0x%01d\n",err);
+	//xputs(s2);	
+	
+	// Settings and performance for indoor navigation (Data sheet recommendation settings)
+	// Setting will be set while BME280 is in sleep mode
+	//
+	// Indoor Sensor mode:
+	//  * Normal mode
+	//  * Oversampling: Pressure x16, Temperature x2, Humidity x1
+	//  * IIR filter: 16
+		
+	// Start to set BME280 register ctrl_hum (BME280_REG_CTRL_HUM)
+	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK);			// generate I2C start + output address to I2C bus
+	if (!err) err = (i2c_write(BME280_REG_CTRL_HUM) == I2C_NACK);   // write register address to write to
+	if (!err) err = (i2c_write(BME280_OSRS_H) == I2C_NACK);         // write value into register
+	i2c_stop();														// close I2C bus 
+
+	sprintf(s2,"BME280_REG_CTRL_HUM = %01d\n",err);
+	xputs(s2);
+	
+	
+		//err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
+		//if (!err) err = (i2c_write(BME280_REG_CTRL_HUM) == I2C_NACK); // seconds register is first register to read
+		//if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
+		//
+		//if (!err)
+		//{
+			//reg  = (uint8_t)i2c_readNak();
+		//}
+//
+		//sprintf(s2,"BME280_REG_CTRL_HUM = 0x%02x\n",reg);
+		//xputs(s2);	
+	
+
+	// Set BME280 register config (BME280_REG_CONFIG).
+	//Register has to be set in Sleep mode, before BME280_REG_CTRL_MEAS is set 
+	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK);						// generate I2C start + output address to I2C bus
+	if (!err) err = (i2c_write(BME280_REG_CONFIG) == I2C_NACK);					// write register address to write to
+	if (!err) err = (i2c_write(BME280_T_SB | BME280_FILTER) == I2C_NACK);       // write value into register
+	i2c_stop();																	// close I2C bus
+	
+	sprintf(s2,"BME280_REG_CONFIG = %01d\n",err);
+	xputs(s2);
+	
+		//err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
+		//if (!err) err = (i2c_write(BME280_REG_CONFIG) == I2C_NACK); // seconds register is first register to read
+		//if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
+		//
+		//if (!err)
+		//{
+			//reg  = (uint8_t)i2c_readNak();
+		//}
+//
+		//sprintf(s2,"BME280_REG_CONFIG = 0x%02x\n",reg);
+		//xputs(s2);	
+	
+
+	// Set BME280 register ctrl_meas (BME280_REG_CTRL_MEAS)
+	err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK);										// generate I2C start + output address to I2C bus
+	if (!err) err = (i2c_write(BME280_REG_CTRL_MEAS) == I2C_NACK);								// write register address to write to
+	if (!err) err = (i2c_write(BME280_OSRS_T | BME280_OSRS_P | BME280_MODE) == I2C_NACK);       // write value into register
+	i2c_stop();																					// close I2C bus	
+
+		//err = (i2c_start(BME280_ADR | I2C_WRITE) == I2C_NACK); // generate I2C start + output address to I2C bus
+		//if (!err) err = (i2c_write(BME280_REG_CTRL_MEAS) == I2C_NACK); // seconds register is first register to read
+		//if (!err) err = (i2c_rep_start(BME280_ADR | I2C_READ) == I2C_NACK);
+		//
+		//if (!err)
+		//{
+			//reg  = (uint8_t)i2c_readNak();
+		//}
+//
+		//sprintf(s2,"BME280_REG_CTRL_MEAS = 0x%02x\n",reg);
+		//xputs(s2);
+//
+
+	
+	bme280_temperature();
+
+
+} // bme280_init()
+
+/*------------------------------------------------------------------------
+  Purpose  : This task is called to read the BME280 temperature.
+             
+  Variables: bme280_pressure, bme280_temperature
+  Returns  : Temperature
+  ------------------------------------------------------------------------*/
+void bme280_temperature(void)
+{
+	uint16_t dig_T1;
+	int16_t  dig_T2;
+	int16_t  dig_T3;
+	int32_t  t_fine;
+	uint32_t adc_T; 
+	int32_t var1, var2;
+	int32_t	T;
+	
+	bool err;
+	uint8_t msb_reg, lsb_reg;
+	uint8_t msb_t, lsb_t, xlsb_t;
+	char s2[30];
+	
+	// Read dig_T1
+	lsb_reg = (bme280_read_reg(0x88));
+	msb_reg = (bme280_read_reg(0x89));
+	
+	dig_T1 = (msb_reg << 8 | lsb_reg);		
+		
+	sprintf(s2,"dig_T1 = 0x%x\n",dig_T1);
+	xputs(s2);
+	
+	
+	// Read dig_T2
+	lsb_reg = (bme280_read_reg(0x8A));
+	msb_reg = (bme280_read_reg(0x8B));
+		
+	dig_T2 = (msb_reg << 8 | lsb_reg);
+		
+	sprintf(s2,"dig_T2 = 0x%x\n",dig_T2);
+	xputs(s2);
+	
+	// Read dig_T3
+	lsb_reg = (bme280_read_reg(0x8C));
+	msb_reg = (bme280_read_reg(0x8D));
+		
+	dig_T3 = (msb_reg << 8 | lsb_reg);
+		
+	sprintf(s2,"dig_T3 = 0x%x\n",dig_T3);
+	xputs(s2);
+	
+	//Read msb_t
+	msb_t  = (bme280_read_reg(0xFA));
+	sprintf(s2,"msb_t = %x\n",msb_t);
+	xputs(s2);
+	
+	lsb_t  = (bme280_read_reg(0xFB));
+	sprintf(s2,"lsb_t = %x\n",lsb_t);
+	xputs(s2);
+	
+	xlsb_t = (bme280_read_reg(0xFC));
+	sprintf(s2,"xlsb_t = %x\n",xlsb_t);
+	xputs(s2);
+
+	adc_T = (msb_t << 12 | lsb_t << 4 | xlsb_t >> 4); 
+	
+	sprintf(s2,"adc_T = %x\n",adc_T);
+	xputs(s2);
+	
+	//Calculate Temperature in 32bit precision
+    var1 = ((((adc_T >> 3) - ((int32_t)dig_T1 << 1))) * ((int32_t)dig_T2)) >> 11;
+	
+	var2 = (((((adc_T >> 4) - ((int32_t)dig_T1)) * ((adc_T >> 4) - ((int32_t)dig_T1))) >> 12) * ((int32_t)dig_T3)) >> 14;
+	
+	t_fine = var1 + var2;
+    
+    T = ((t_fine * 5 + 128) >> 8);	
+	
+		sprintf(s2,"Temperature = %d\n",T);
+		xputs(s2);
+	
+	//return T;
+		
+} //bme280_temperature
+
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 50 msec. 
@@ -284,6 +512,9 @@ void update_nixies(void)
 	static uint8_t  bits_min_old, bits_sec_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
 			
+	//PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
+	//PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
+	
 	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
 	// Needed for PCB hardware v0.21 and higher
 	// nixie_bits: LDP RDP HH HL MH ML SH SL
@@ -295,7 +526,8 @@ void update_nixies(void)
 	bitstream |= (nixie_bits & 0x0000F000) >>  4; // MH
 	bitstream |= (nixie_bits & 0x000F0000) >> 12; // HL
 	bitstream |= (nixie_bits & 0x00F00000) >> 20; // HH
-	
+
+		
 	bitstream8 = nixie_bits8; // copy original bitstream
 	if (display_time)
 	{
@@ -367,6 +599,7 @@ void update_nixies(void)
 	// Now send the first 8 nixie-bits to hardware
 	// Bit-order: X X X X LDP1 LDP2 LDP3 LDP4
 	//--------------------------------------------------
+	
 	mask8 = 0x80;
 	for (i = 0; i < 8; i++)
 	{
@@ -429,20 +662,20 @@ void clear_nixie(uint8_t nr)
 	{
 		//rgb_colour = BLACK;
 		ws2812b_fill_rgb(BLACK, BLACK, BLACK);
-		PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+		PORTC &= ~(0x0F);
 		
 		for (nr = 1; nr < 7; ++nr)
 		{
  			shift = 24 - 4 * nr;
  			nixie_bits |= (NIXIE_CLEAR << shift);
-		} // for
+		}
 		nixie_bits &=0x00FFFFFF;		// Clear decimal point bits
-	} // if
+	}
 	else
 	{
 		shift = 24 - 4 * nr;
 		nixie_bits |= (NIXIE_CLEAR << shift);
-	} // else
+	} // if
 } // clear_nixie()
 
 /*------------------------------------------------------------------------
@@ -454,31 +687,27 @@ void ftest_nixies(void)
 {
 	static uint8_t std_test = 0;
 	
-	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+	uint8_t i;
 	
-	switch (std_test)
-	{
-		case 0: nixie_bits = 0x01000000; std_test = 1; break;
-		case 1: nixie_bits = 0x02111111; std_test = 2; break;
-		case 2: nixie_bits = 0x40222222; 
-		        PORTC   |= (DEGREESYMBOL | LED_IN19A); 
-				std_test = 3; 
-				break;
-		case 3: nixie_bits = 0x04333333; std_test = 4; break;
-		case 4: nixie_bits = 0x08444444; std_test = 5; break;
-		case 5: nixie_bits = 0x80555555; 
-		        PORTC   |= (HUMIDITYSYMBOL | LED_IN19A); 
-				std_test = 6; 
-				break;
-		case 6: nixie_bits = 0x10666666; std_test = 7; break;
-		case 7: nixie_bits = 0x20777777; std_test = 8; break;
-		case 8: nixie_bits = 0xFF888888; 
-		        PORTC   |= (PRESSURESYMBOL | LED_IN19A); 
-				std_test = 9; 
-				break;
-		case 9: nixie_bits = 0xFF999999; std_test = 0; break;
-	} // switch
+	PORTC &=~(0x0F);
+	
+	
+		switch (std_test)
+		{
+			case 0: nixie_bits = 0x01000000; std_test = 1; break;
+			case 1: nixie_bits = 0x02111111; std_test = 2; break;
+			case 2: nixie_bits = 0x40222222; PORTC |= (DEGREESYMBOL | LED_IN19A); std_test = 3; break;
+			case 3: nixie_bits = 0x04333333; std_test = 4; break;
+			case 4: nixie_bits = 0x08444444; std_test = 5; break;
+			case 5: nixie_bits = 0x80555555; PORTC |= (HUMIDITYSYMBOL | LED_IN19A); std_test = 6; break;
+			case 6: nixie_bits = 0x10666666; std_test = 7; break;
+			case 7: nixie_bits = 0x20777777; std_test = 8; break;
+			case 8: nixie_bits = 0xFF888888; PORTC |= (PRESSURESYMBOL | LED_IN19A); std_test = 9; break;
+			case 9: nixie_bits = 0xFF999999; std_test = 0; break;
+		} // switch
+	
 	//rgb_colour = std_test & 0x07;
+	
 } // ftest_nixies()
 
 /*------------------------------------------------------------------------
@@ -492,36 +721,89 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 	
 	if (rndm == true )
 	{
-		s = rand() % 60;
+		s = rand() %60;
 	}
 	
-	switch (s % 7)
+	switch (s)
 	{
 		case 0:
+		case 7:
+		case 14:
+		case 21:
+		case 28:
+		case 35:
+		case 42:
+		case 49:
+		case 56: 
 			//rgb_colour = WHITE;	
 			ws2812b_fill_rgb(RED, GREEN, BLUE);
 			break;
 		case 1:
+		case 8:
+		case 15:
+		case 22:
+		case 29:
+		case 36:
+		case 43:
+		case 50:
+		case 57:	
 			//rgb_colour = RED;
 			ws2812b_fill_rgb(RED, BLACK, BLACK);
 			break;
 		case 2:
+		case 9:
+		case 16:
+		case 23:
+		case 30:
+		case 37:
+		case 44:
+		case 51:
+		case 58:
 			//rgb_colour = GREEN;
 			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
 			break;
 		case 3:
+		case 10:
+		case 17:
+		case 24:
+		case 31:
+		case 38:
+		case 45:
+		case 52:
+		case 59:
 			//rgb_colour = BLUE;
 			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
 			break;
 		case 4:
+		case 11:
+		case 18:
+		case 25:
+		case 32:
+		case 39:
+		case 46:
+		case 53:
 			//rgb_colour = YELLOW;
 			ws2812b_fill_rgb(RED, GREEN, BLACK);
 			break;
 		case 5:
+		case 12:
+		case 19:
+		case 26:
+		case 33:
+		case 40:
+		case 47:
+		case 54:
 			//rgb_colour = MAGENTA;
 			ws2812b_fill_rgb(RED, BLACK, BLUE);
 			break;
 		case 6:
+		case 13:
+		case 20:
+		case 27:
+		case 34:
+		case 41:
+		case 48:
+		case 55:
 			//rgb_colour = CYAN;
 			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
 			break;
@@ -529,7 +811,7 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 			//rgb_colour = BLACK;
 			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
 			break;	
-	} // switch
+	} // Switch
 } // fixed_random_rgb_colour
 
 /*------------------------------------------------------------------------
@@ -547,6 +829,7 @@ bool blanking_active(Time p)
 	else return true;
 } // blanking_active()
 
+
 /*------------------------------------------------------------------------
   Purpose  : This task decide what to display on the Nixie Tubes.
 			 Called once every second.
@@ -558,6 +841,7 @@ void display_task(void)
 	Time    p; // Time struct
 	uint8_t x, y ;
 	char    s2[40]; // Used for printing to RS232 port
+	uint8_t	cnt_60sec   = 0;
 	uint8_t blank_zero;
 	
 	nixie_bits  = 0x00000000; // clear all bits
@@ -566,9 +850,14 @@ void display_task(void)
 	display_time = false;     // start with no-time on display
 	
 	
-	if (time_only == true) 	  // *0 IR remote
-		 y = 0;
-	else y = p.sec; // End time_only
+	if (time_only == true)			// *0 IR remote
+	{
+		y = 0;
+	}
+	else
+	{
+		y = p.sec;
+	}	//End time_only
 
 	
 	if (random_rgb_pattern == true)
@@ -583,42 +872,60 @@ void display_task(void)
 	{
 		switch (fixed_rgb_colour)
 		{
-			case 0: // rgb_colour = BLACK;
-				ws2812b_fill_rgb(BLACK, BLACK, BLACK);
-				break;
-			case 1: // rgb_colour = RED;
-				ws2812b_fill_rgb(RED, BLACK, BLACK);
-				break;
-			case 2: //rgb_colour = GREEN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
-				break;
-			case 3: //rgb_colour = BLUE;
-				ws2812b_fill_rgb(BLACK, BLACK, BLUE);
-				break;
-			case 4: // rgb_colour = YELLOW;
-				ws2812b_fill_rgb(RED, GREEN, BLACK);
-				break;
-			case 5: // rgb_colour = MAGENTA;
-				ws2812b_fill_rgb(RED, BLACK, BLUE);
-				break;
-			case 6: // rgb_colour = CYAN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLUE);
-				break;
-			case 7: //rgb_colour = WHITE;
-				ws2812b_fill_rgb(RED, GREEN, BLUE);
-				break;
+			case 0:
+			//rgb_colour = BLACK;
+			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
+			break;
+			case 1:
+			//rgb_colour = RED;
+			ws2812b_fill_rgb(RED, BLACK, BLACK);
+			break;
+			case 2:
+			//rgb_colour = GREEN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+			break;
+			case 3:
+			//rgb_colour = BLUE;
+			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
+			break;
+			case 4:
+			//rgb_colour = YELLOW;
+			ws2812b_fill_rgb(RED, GREEN, BLACK);
+			break;
+			case 5:
+			//rgb_colour = MAGENTA;
+			ws2812b_fill_rgb(RED, BLACK, BLUE);
+			break;
+			case 6:
+			//rgb_colour = CYAN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
+			break;
+			case 7:
+			//rgb_colour = WHITE;
+			ws2812b_fill_rgb(RED, GREEN, BLUE);
+			break;
 		} // End Switch
 	} // End random_rgb_pattern
+	
+	
+	
 	
 	if (test_nixies) ftest_nixies(); // S3 command
 	else if (hv_relay_sw)
 	{   // V0 or V1 command
 		if (hv_relay_fx)
+		{
 		     PORTB |=  HV_ON; // relay on
-		else PORTB &= ~HV_ON; // relay off
+		}
+		else
+		{
+			PORTB &= ~HV_ON; // relay off
+		}
 	} // else if
 	else if (blanking_active(p))
+	{
 		PORTB &= ~HV_ON; // relay off
+	}
 	else
 	{
 	  PORTB |=  HV_ON; // relay on	
@@ -638,12 +945,13 @@ void display_task(void)
 			{
 				//rgb_colour = GREEN;
 				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
-			} // if			
-			break;
+			}			
+		
+		break;
 		
 		case 17: // display year
 		case 18:
-			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+			PORTC &=~(0x0F);
 			nixie_bits = encode_to_bcd(p.year / 100);
 			nixie_bits <<= 8;
 			nixie_bits |= encode_to_bcd(p.year % 100);
@@ -655,8 +963,9 @@ void display_task(void)
 			{
 				//rgb_colour = GREEN;
 				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
-			} // if
-			break;
+			}
+			
+		break;
 		
 		// case 30: // display humidity
 		// case 31:
@@ -702,9 +1011,11 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
+			
 			//x = (uint8_t)bme280_temp;
-			//bme280_temp = bme280_readTemperature();
-			x = bme280_temp * 10;
+			
+			
+			
 			
 			blank_zero = x;
 			
@@ -719,7 +1030,7 @@ void display_task(void)
 			//nixie_bits |= (dht22_temp - 10 * x);
 			nixie_bits |= LEFT_DP6;
 			
-			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
+			PORTC &=~(0x0F);
 			PORTC |= DEGREESYMBOL;
 			PORTC |= LED_IN19A;
 			
@@ -734,14 +1045,15 @@ void display_task(void)
 			if (blank_zero < 10)	// Blank 0 when temp < 10,0 degrees
 			{
 				clear_nixie(4);
-			} // if
+			}			
 			
 			if (default_rgb_pattern == true)
 			{
 				//rgb_colour = RED;
 				ws2812b_fill_rgb(RED, BLACK, BLACK);
-			} // if
-			break;
+			}
+			
+		break;
 
 		case 50: // display Pressure in mbar
 		case 51:
@@ -760,7 +1072,7 @@ void display_task(void)
 			nixie_bits |= x;
 			nixie_bits |= LEFT_DP6;
 
-			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
+			PORTC &=~(0x0F);
 			PORTC |= PRESSURESYMBOL;
 			PORTC |= LED_IN19A;
 			
@@ -774,14 +1086,15 @@ void display_task(void)
 			if (blank_zero < 10)	// Blank zero when pressure < 1000,0 mBar
 			{
 				clear_nixie(2);
-			} // if
+			}
 				
 			if (default_rgb_pattern == true)
 			{
 				//rgb_colour = CYAN;
 				ws2812b_fill_rgb(RED, BLACK, BLUE);
-			} // if
-			break;
+			}
+			
+		break;
 	
 		default: // display normal time
 			display_time = true;
@@ -791,7 +1104,7 @@ void display_task(void)
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
-			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+			PORTC &=~(0x0F);
 			if (default_rgb_pattern == true)
 			{
 				//rgb_colour = YELLOW;
@@ -808,6 +1121,7 @@ void display_task(void)
 	  } // switch
 	} // else
 } // display_task()
+
 
 /*------------------------------------------------------------------------
 Purpose  : Anti Nixie poisoning routine
@@ -845,75 +1159,87 @@ Purpose  : Set the correct time in the DS3231 module via IRremote
 Variables: -
 Returns  : -
 ------------------------------------------------------------------------*/
+
 void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 {
 	switch (y)
 	{
 		case 0:
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			clear_nixie(4);
-			clear_nixie(5);
-			break;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		clear_nixie(4);
+		clear_nixie(5);
+		
+				
+		break;
 		
 		case 1:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			clear_nixie(4);
-			break;
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		clear_nixie(4);
+				
+		break;
 
 		case 2:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			break;
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		
+		break;
 		
 		case 3:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);		
-			break;
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);		
+		
+		break;
 
 		case 4:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);		
-			break;
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);		
+		
+		break;
 		
 		case 5:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			break;
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+				
+		break;
 		
 		case 6:
-			nixie_bits = 0x00000000;
-			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-			break;
+		nixie_bits &= 0x00000000;
+		PORTC &=~0x0F;
+		
+		break;
+		
 	} //switch
 
 	//nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
-	nixie_bits8 = 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
+	nixie_bits8 &= 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
 	
 	if (z == 'T')
 	{
 		nixie_bits  |= LEFT_DP5;
 		nixie_bits8 |= LEFT_DP3;
 		ws2812b_fill_rgb(RED,GREEN,BLACK); // YELLOW
-	} // if
+		//rgb_colour = YELLOW;
+	}
 	else if (z == 'D')
 	{
 		nixie_bits  |= LEFT_DP5;
 		nixie_bits8 |= LEFT_DP3;
 		ws2812b_fill_rgb(BLACK, GREEN, BLACK); // GREEN
-	} // else if
+		//rgb_colour = GREEN;
+	}
 } // end set_nixie_timedate
 
 /*------------------------------------------------------------------------
@@ -944,10 +1270,12 @@ void init_ports(void)
 	PORTB &= ~(IR_RCV); // disable pull-up resistors
 	DDRB  |=  (TIME_MEAS | WS2812_DI | HV_ON); // set bits = output
 	PORTB &= ~(TIME_MEAS | WS2812_DI | HV_ON); // init. outputs to 0
-	DDRC  |=  (0x0F);   // set bits C3 t/m C0 as output
-	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+	DDRC |=(0x0F);   // set bits C3 t/m C0 as output
+	PORTC &=~(0x0F); // set outputs to 0
+	
 	DDRD  |=  (SDIN | SHCP | STCP); // set bits = output
 	PORTD &= ~(SDIN | SHCP | STCP); // set outputs to 0
+	
 } // init_ports()
 
 /*------------------------------------------------------------------------
@@ -958,21 +1286,17 @@ Returns  : -
 ------------------------------------------------------------------------*/
 int main(void)
 {
+	
+	uint8_t i = 0;
+	Time    p; // Time struct
 	char s[20];
+
+	init_timer2();				// init. timer for scheduler and IR-receiver 
+	ir_init();					// init. IR-library
+	i2c_init(SCL_CLK_400KHZ);	// Init. I2C HW with 400 kHz clock
+	init_ports();				// init. PORTB, PORTC and PORTD port-pins 	
 	
-	init_timer2(); // init. timer for scheduler and IR-receiver 
-	ir_init();     // init. IR-library
-	i2c_init(SCL_CLK_400KHZ); // Init. I2C HW with 400 kHz clock
-	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
-	srand(59);	   // Initialize random generator from 0 - 59
-	
-	// BME2080 initialization
-	//bme280_init();
-	
-	// Initialize Serial Communication, See usart.h for BAUD
-	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
-	usart_init(MYUBRR); // Initializes the serial communication
-	//bmp180_init();      // Init. the BMP180 sensor
+	srand(59);					// Initialize random generator from 0 - 59
 	
 	// Add tasks for task-scheduler here
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
@@ -980,7 +1304,11 @@ int main(void)
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
 	//add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
 	//add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
-	
+
+	// Initialize Serial Communication, See usart.h for BAUD
+	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
+	usart_init(MYUBRR); // Initializes the serial communication
+
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
@@ -989,8 +1317,13 @@ int main(void)
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
+
+
+	bme280_init();	// Initialization BME280
 	
-	ws2812b_fill_rgb(BLACK, BLACK, BLACK); // Init. WS2812b RGB Leds to black 
+	ws2812b_fill_rgb(BLACK, BLACK, BLACK);	// Set WS2812b RGB Leds to black
+
+	
 	
 	// Main routine 
 	while(1)
@@ -999,15 +1332,12 @@ int main(void)
 		dispatch_tasks(); // Run Task-Scheduler
 		switch (rs232_command_handler()) // run command handler continuously
 		{
-			case ERR_CMD: 
-			     xputs("Command Error\n");
-				 break;
-			case ERR_NUM: 
-			     sprintf(s,"Number Error (%s)\n",rs232_inbuf);
-				 xputs(s);
-				 break;
-			default: 
-			     break;
+			case ERR_CMD: xputs("Command Error\n");
+			break;
+			case ERR_NUM: sprintf(s,"Number Error (%s)\n",rs232_inbuf);
+			xputs(s);
+			break;
+			default     : break;
 		} // switch
 	} // while
 } // main()
