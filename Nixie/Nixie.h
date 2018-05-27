@@ -19,23 +19,14 @@
 // Dig.12 - - -        (MISO) PB4 [15]    [16] PB5 (SCK)      TIME_MEAS Dig.13
 //                               -----USB----
 //                               Arduino NANO
-// $Id: Nixie.h,v 1.1 2016/05/07 09:37:27 Emile Exp $
-// $Log: Nixie.h,v $
-// Revision 1.1  2016/05/07 09:37:27  Emile
-// - Project restructure
-//
-// Revision 1.1.1.1  2016/05/07 08:50:25  Emile
-// - Initial version for 1st time check-in to CVS.
-//
-// Revision 1.2.0.0  2016/07/09 21:39:30  Ronald.
-// - Added PORTC Defines  
-//
 //-----------------------------------------------------------------------------
 #ifndef _Nixie_h
 #define _Nixie_h
 
+#include "i2c.h"
+
 // Set to 1 to print sensor outputs
-#define DEBUG_SENSORS (1)
+#define DEBUG_SENSORS (0)
 
 //------------------------
 // PORTB Defines
@@ -64,9 +55,9 @@
 //------------------------
 // RGB LED Defines
 //------------------------
-#define RED         (0x01)
-#define GREEN       (0x02)
-#define BLUE        (0x04)
+#define RED         (0xFF)
+#define GREEN       (0xFF)
+#define BLUE        (0xFF)
 #define YELLOW      (RED |GREEN)
 #define CYAN        (BLUE|GREEN)
 #define MAGENTA     (RED | BLUE)
@@ -130,5 +121,23 @@
 // Temp / Hum / mBar Calibration
 //------------------------
 #define Cal_Hum (100)
+
+uint32_t millis(void);
+void          delay_msec(uint16_t ms);
+void          ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812b_blue);
+void          ws2812b_send_byte(uint8_t bt);
+void          ws2812_send_all(void);
+void          check_and_set_summertime(Time p);
+void          bme280_task(void);
+void          update_nixies(void);
+uint8_t       encode_to_bcd(uint8_t x);
+void          clear_nixie(uint8_t nr);
+void          ftest_nixies(void);
+void          fixed_random_rgb_colour(uint8_t s, bool rndm);
+bool          blanking_active(Time p);
+void          display_task(void);
+void          set_nixie_timedate(uint8_t x, uint8_t y, char z);
+void          init_timer2(void);
+void          init_ports(void);
 
 #endif

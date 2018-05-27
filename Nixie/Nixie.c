@@ -9,25 +9,20 @@
 #include "usart.h"
 #include "IRremote.h"
 #include "Nixie.h"
-#include "i2c.h"
 #include "command_interpreter.h"
-#include "dht22.h"
+//#include "bme280.h"
 #include "eep.h"
-
 
 bool		  test_nixies = 0;					// S3 command / IR #9 command
 bool		  nixie_lifetimesaver = false;		// Toggle nixie's on (false), no LST or off (true), LST active - *3 IR remote
 bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *2 IR remote 	
-uint8_t		  cnt_60sec   = 0;					// 60 seconds counter during nixie_lts - *1 IR remote 	 	
 uint8_t       cnt_50usec  = 0;					// 50 usec. counter
 unsigned long t2_millis   = 0UL;				// msec. counter
-uint16_t      dht22_hum   = 0;					// Humidity E-1 %
-int16_t       dht22_temp  = 0;					// Temperature E-1 Celsius
-//int16_t       dht22_dewp  = 0;				// Dewpoint E-1 Celsius
-double        bmp180_pressure = 0.0;			// Pressure E-1 mbar
-double        bmp180_temp     = 0.0;			// Temperature E-1 Celsius
+double        bme280_pressure = 0.0;			// Pressure E-1 mbar
+double        bme280_temp     = 0.0;			// Temperature E-1 Celsius
+double		  bme280_hum	  = 0.0;			// Humidity E-1 %		
 
-bool          dst_active      = false;		// true = Daylight Saving Time active
+bool          dst_active      = false;			// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
@@ -57,10 +52,10 @@ bool          hv_relay_fx;    // fix for hv_relay
 
 extern char   rs232_inbuf[];       // RS232 input buffer
 
-
+//struct bme280_dev dev;
 
 //---------------------------------------------------------------------------
-// Copy to hardware PVB v0.21: MSB (bit 39) first --> LSB (bit 00)
+// Copy to hardware PCB v0.21: MSB (bit 39) first --> LSB (bit 00)
 //
 // Bits 39..32: Decimal points:  -    -    -    -   LDP1 LDP2 LDP3 LDP4
 // Bits 31..24: Decimal points: LDP5 LDP6 RDP1 RDP2 RDP3 RDP4 RDP5 RDP6
@@ -124,6 +119,24 @@ ISR(TIMER2_COMPA_vect)
 } // ISR()
 
 /*-----------------------------------------------------------------------------
+  Purpose  : This routine fills the led_<x>[NR_LEDS] array.
+  Variables: ws2812b_red, ws2812b_green, ws2812b_blue : the byte to fill
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812b_blue)
+{
+	uint8_t i;
+	
+	for (i = 0; i < NR_LEDS; i++)
+	{
+		led_g[i] = ws2812b_green;
+		led_r[i] = ws2812b_red;
+		led_b[i] = ws2812b_blue;
+	} // for i
+	ws2812_send_all();	
+} // ws2812b_fill_rgb()
+
+/*-----------------------------------------------------------------------------
   Purpose  : This routine sends one byte to the WS2812B LED-string.
   Variables: bt: the byte to send
   Returns  : -
@@ -155,7 +168,7 @@ void ws2812b_send_byte(uint8_t bt)
       led_b: the blue byte array
   Returns  : -
   ---------------------------------------------------------------------------*/
-void ws2812_task(void)
+void ws2812_send_all(void)
 {
     uint8_t i;
 
@@ -167,7 +180,7 @@ void ws2812_task(void)
         ws2812b_send_byte(led_b[i]); // Send one byte of Blue
     } // for i
     sei(); // enable IRQ again
-} // ws2812_task()
+} // ws2812_send_all()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called every time the time is displayed on the
@@ -245,40 +258,14 @@ void check_and_set_summertime(Time p)
 } // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
-  Purpose  : This task is called by the Task-Scheduler every 5 seconds.
-             It reads the DHT22 sensor Humidity and Temperature
-  Variables: dht22_humidity, dht22_temperature
-  Returns  : -
-  ------------------------------------------------------------------------*/
-void dht22_task(void)
-{
-	int8_t x;
-	
-	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
-	//dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
-#ifdef DEBUG_SENSORS
-	char s[30];
-	x = dht22_hum / 10;
-	sprintf(s,"dht22: RH=%d.%d %%, \n",x,dht22_hum-10*x); 
-	xputs(s);
-	x = dht22_temp / 10;
-	//sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
-	//xputs(s);
-	//x = dht22_dewp / 10;
-	//sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
-	//xputs(s);
-#endif
-} // dht22_task()
-
-/*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every second.
-             It reads the BMP180 pressure and temperature.
-  Variables: bmp180_pressure, bmp180_temperature
+             It reads the BME280 pressure and temperature.
+  Variables: bme280_pressure, bme280_temperature
   Returns  : -
   ------------------------------------------------------------------------*/
-void bmp180_task(void)
+void bme280_task(void)
 {
-} // bmp180_task()
+} // bme280_task()
 
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 50 msec. 
@@ -297,9 +284,6 @@ void update_nixies(void)
 	static uint8_t  bits_min_old, bits_sec_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
 			
-	//PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
-	//PORTB |= (rgb_colour & (RGB_R | RGB_G | RGB_B)); // update LED colours
-	
 	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
 	// Needed for PCB hardware v0.21 and higher
 	// nixie_bits: LDP RDP HH HL MH ML SH SL
@@ -374,11 +358,11 @@ void update_nixies(void)
 						bits_sec_old = x;
 					} // if
 				} // if
-			} // if
-			else wheel_cnt_sec = 0; // reset for next second
+				else wheel_cnt_sec = 0; // reset for next second
 			break;
 		} // switch
 	} // if	
+	
 	//--------------------------------------------------
 	// Now send the first 8 nixie-bits to hardware
 	// Bit-order: X X X X LDP1 LDP2 LDP3 LDP4
@@ -390,7 +374,7 @@ void update_nixies(void)
 		if ((bitstream8 & mask8) == mask8)
 		PORTD |=  SDIN; // set SDIN to 1
 		else PORTD &= ~SDIN; // set SDIN to 0
-		mask >>= 1;     // shift right 1
+		mask8 >>= 1;     // shift right 1
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
 	}
@@ -443,21 +427,22 @@ void clear_nixie(uint8_t nr)
 		
 	if (nr == 0)
 	{
-		rgb_colour = BLACK;
-		PORTC &= ~(0x0F);
+		//rgb_colour = BLACK;
+		ws2812b_fill_rgb(BLACK, BLACK, BLACK);
+		PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 		
 		for (nr = 1; nr < 7; ++nr)
 		{
  			shift = 24 - 4 * nr;
  			nixie_bits |= (NIXIE_CLEAR << shift);
-		}
+		} // for
 		nixie_bits &=0x00FFFFFF;		// Clear decimal point bits
-	}
+	} // if
 	else
 	{
 		shift = 24 - 4 * nr;
 		nixie_bits |= (NIXIE_CLEAR << shift);
-	} // if
+	} // else
 } // clear_nixie()
 
 /*------------------------------------------------------------------------
@@ -469,25 +454,31 @@ void ftest_nixies(void)
 {
 	static uint8_t std_test = 0;
 	
-	PORTC &=~(0x0F);
+	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 	
-	
-		switch (std_test)
-		{
-			case 0: nixie_bits = 0x01000000; std_test = 1; break;
-			case 1: nixie_bits = 0x02111111; std_test = 2; break;
-			case 2: nixie_bits = 0x40222222; PORTC |= (DEGREESYMBOL | LED_IN19A); std_test = 3; break;
-			case 3: nixie_bits = 0x04333333; std_test = 4; break;
-			case 4: nixie_bits = 0x08444444; std_test = 5; break;
-			case 5: nixie_bits = 0x80555555; PORTC |= (HUMIDITYSYMBOL | LED_IN19A); std_test = 6; break;
-			case 6: nixie_bits = 0x10666666; std_test = 7; break;
-			case 7: nixie_bits = 0x20777777; std_test = 8; break;
-			case 8: nixie_bits = 0xFF888888; PORTC |= (PRESSURESYMBOL | LED_IN19A); std_test = 9; break;
-			case 9: nixie_bits = 0xFF999999; std_test = 0; break;
-		} // switch
-	
+	switch (std_test)
+	{
+		case 0: nixie_bits = 0x01000000; std_test = 1; break;
+		case 1: nixie_bits = 0x02111111; std_test = 2; break;
+		case 2: nixie_bits = 0x40222222; 
+		        PORTC   |= (DEGREESYMBOL | LED_IN19A); 
+				std_test = 3; 
+				break;
+		case 3: nixie_bits = 0x04333333; std_test = 4; break;
+		case 4: nixie_bits = 0x08444444; std_test = 5; break;
+		case 5: nixie_bits = 0x80555555; 
+		        PORTC   |= (HUMIDITYSYMBOL | LED_IN19A); 
+				std_test = 6; 
+				break;
+		case 6: nixie_bits = 0x10666666; std_test = 7; break;
+		case 7: nixie_bits = 0x20777777; std_test = 8; break;
+		case 8: nixie_bits = 0xFF888888; 
+		        PORTC   |= (PRESSURESYMBOL | LED_IN19A); 
+				std_test = 9; 
+				break;
+		case 9: nixie_bits = 0xFF999999; std_test = 0; break;
+	} // switch
 	//rgb_colour = std_test & 0x07;
-	
 } // ftest_nixies()
 
 /*------------------------------------------------------------------------
@@ -501,89 +492,44 @@ void fixed_random_rgb_colour(uint8_t s, bool rndm)
 	
 	if (rndm == true )
 	{
-		s = rand() %60;
+		s = rand() % 60;
 	}
 	
-	switch (s)
+	switch (s % 7)
 	{
 		case 0:
-		case 7:
-		case 14:
-		case 21:
-		case 28:
-		case 35:
-		case 42:
-		case 49:
-		case 56: 
-			rgb_colour = WHITE;	
+			//rgb_colour = WHITE;	
+			ws2812b_fill_rgb(RED, GREEN, BLUE);
 			break;
 		case 1:
-		case 8:
-		case 15:
-		case 22:
-		case 29:
-		case 36:
-		case 43:
-		case 50:
-		case 57:	
-			rgb_colour = RED;
+			//rgb_colour = RED;
+			ws2812b_fill_rgb(RED, BLACK, BLACK);
 			break;
 		case 2:
-		case 9:
-		case 16:
-		case 23:
-		case 30:
-		case 37:
-		case 44:
-		case 51:
-		case 58:
-			rgb_colour = GREEN;
+			//rgb_colour = GREEN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
 			break;
 		case 3:
-		case 10:
-		case 17:
-		case 24:
-		case 31:
-		case 38:
-		case 45:
-		case 52:
-		case 59:
-			rgb_colour = BLUE;
+			//rgb_colour = BLUE;
+			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
 			break;
 		case 4:
-		case 11:
-		case 18:
-		case 25:
-		case 32:
-		case 39:
-		case 46:
-		case 53:
-			rgb_colour = YELLOW;
+			//rgb_colour = YELLOW;
+			ws2812b_fill_rgb(RED, GREEN, BLACK);
 			break;
 		case 5:
-		case 12:
-		case 19:
-		case 26:
-		case 33:
-		case 40:
-		case 47:
-		case 54:
-			rgb_colour = MAGENTA;
+			//rgb_colour = MAGENTA;
+			ws2812b_fill_rgb(RED, BLACK, BLUE);
 			break;
 		case 6:
-		case 13:
-		case 20:
-		case 27:
-		case 34:
-		case 41:
-		case 48:
-		case 55:
-			rgb_colour = CYAN;
+			//rgb_colour = CYAN;
+			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
 			break;
 		default:
-			rgb_colour = BLACK;
+			//rgb_colour = BLACK;
+			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
 			break;	
-	} // Switch
+	} // switch
 } // fixed_random_rgb_colour
 
 /*------------------------------------------------------------------------
@@ -601,7 +547,6 @@ bool blanking_active(Time p)
 	else return true;
 } // blanking_active()
 
-
 /*------------------------------------------------------------------------
   Purpose  : This task decide what to display on the Nixie Tubes.
 			 Called once every second.
@@ -613,13 +558,58 @@ void display_task(void)
 	Time    p; // Time struct
 	uint8_t x, y ;
 	char    s2[40]; // Used for printing to RS232 port
-	uint8_t	cnt_60sec   = 0;
 	uint8_t blank_zero;
 	
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
 	ds3231_gettime(&p);
 	display_time = false;     // start with no-time on display
+	
+	
+	if (time_only == true) 	  // *0 IR remote
+		 y = 0;
+	else y = p.sec; // End time_only
+
+	
+	if (random_rgb_pattern == true)
+	{
+		fixed_random_rgb_colour(p.sec, true);
+	}
+	else if (fixed_rgb_pattern == true)
+	{
+		fixed_random_rgb_colour(p.sec, false);
+	}
+	else if (default_rgb_pattern == false)
+	{
+		switch (fixed_rgb_colour)
+		{
+			case 0: // rgb_colour = BLACK;
+				ws2812b_fill_rgb(BLACK, BLACK, BLACK);
+				break;
+			case 1: // rgb_colour = RED;
+				ws2812b_fill_rgb(RED, BLACK, BLACK);
+				break;
+			case 2: //rgb_colour = GREEN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+				break;
+			case 3: //rgb_colour = BLUE;
+				ws2812b_fill_rgb(BLACK, BLACK, BLUE);
+				break;
+			case 4: // rgb_colour = YELLOW;
+				ws2812b_fill_rgb(RED, GREEN, BLACK);
+				break;
+			case 5: // rgb_colour = MAGENTA;
+				ws2812b_fill_rgb(RED, BLACK, BLUE);
+				break;
+			case 6: // rgb_colour = CYAN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLUE);
+				break;
+			case 7: //rgb_colour = WHITE;
+				ws2812b_fill_rgb(RED, GREEN, BLUE);
+				break;
+		} // End Switch
+	} // End random_rgb_pattern
+	
 	if (test_nixies) ftest_nixies(); // S3 command
 	else if (hv_relay_sw)
 	{   // V0 or V1 command
@@ -634,7 +624,8 @@ void display_task(void)
 	  PORTB |=  HV_ON; // relay on	
 	  switch(p.sec)
 	  { 
-		case 25: // display date & month
+		case 15: // display date & month
+		case 16:
 			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
@@ -645,14 +636,14 @@ void display_task(void)
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = GREEN;
-			}			
-		
-		break;
+				//rgb_colour = GREEN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+			} // if			
+			break;
 		
 		case 17: // display year
 		case 18:
-			PORTC &=~(0x0F);
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 			nixie_bits = encode_to_bcd(p.year / 100);
 			nixie_bits <<= 8;
 			nixie_bits |= encode_to_bcd(p.year % 100);
@@ -662,10 +653,10 @@ void display_task(void)
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = GREEN;
-			}
-			
-		break;
+				//rgb_colour = GREEN;
+				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+			} // if
+			break;
 		
 		// case 30: // display humidity
 		// case 31:
@@ -711,23 +702,24 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
-			
-			x = (uint8_t)bmp180_temp;
+			//x = (uint8_t)bme280_temp;
+			//bme280_temp = bme280_readTemperature();
+			x = bme280_temp * 10;
 			
 			blank_zero = x;
 			
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			nixie_bits |= (uint8_t)(10.0 * (bmp180_temp - x));
+			nixie_bits |= (uint8_t)(10.0 * (bme280_temp - x));
 			//nixie_bits <<= 12;
 			
 			//x = dht22_temp / 10;
 			//nixie_bits = encode_to_bcd(x);
 			//nixie_bits <<= 4;
 			//nixie_bits |= (dht22_temp - 10 * x);
-			nixie_bits |= RIGHT_DP5;
+			nixie_bits |= LEFT_DP6;
 			
-			PORTC &=~(0x0F);
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |= DEGREESYMBOL;
 			PORTC |= LED_IN19A;
 			
@@ -742,31 +734,33 @@ void display_task(void)
 			if (blank_zero < 10)	// Blank 0 when temp < 10,0 degrees
 			{
 				clear_nixie(4);
-			}			
+			} // if
 			
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = RED;
-			}
-			
-		break;
+				//rgb_colour = RED;
+				ws2812b_fill_rgb(RED, BLACK, BLACK);
+			} // if
+			break;
 
 		case 50: // display Pressure in mbar
 		case 51:
-			x = (uint8_t)(bmp180_pressure / 100.0);
+			
+			//bme280_pressure = bme280_readPressure();
+			x = (uint8_t)(bme280_pressure / 100.0);
 			
 			blank_zero = x;
 			
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
-			x = (uint8_t)(bmp180_pressure - (int16_t)x * 100);
+			x = (uint8_t)(bme280_pressure - (int16_t)x * 100);
 			nixie_bits |= encode_to_bcd(x);
 			nixie_bits <<= 4;
-			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
+			x = (uint8_t)(10 * (bme280_pressure - (int16_t)bme280_pressure));
 			nixie_bits |= x;
-			nixie_bits |= RIGHT_DP5;
+			nixie_bits |= LEFT_DP6;
 
-			PORTC &=~(0x0F);
+			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
 			PORTC |= PRESSURESYMBOL;
 			PORTC |= LED_IN19A;
 			
@@ -780,14 +774,14 @@ void display_task(void)
 			if (blank_zero < 10)	// Blank zero when pressure < 1000,0 mBar
 			{
 				clear_nixie(2);
-			}
+			} // if
 				
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = CYAN;
-			}
-			
-		break;
+				//rgb_colour = CYAN;
+				ws2812b_fill_rgb(RED, BLACK, BLUE);
+			} // if
+			break;
 	
 		default: // display normal time
 			display_time = true;
@@ -797,23 +791,23 @@ void display_task(void)
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
-			PORTC &=~(0x0F);
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 			if (default_rgb_pattern == true)
 			{
-				rgb_colour = YELLOW;
+				//rgb_colour = YELLOW;
+				ws2812b_fill_rgb(RED, GREEN, BLACK);
 			}
-			// NOTE: LEFT_DP1..LEFT_DP1 are contained in upper 8 bits!
+			// NOTE: LEFT_DP1..LEFT_DP4 are contained in upper 8 bits!
 			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
 			else              nixie_bits  |=  LEFT_DP5;
-			if (p.min & 0x01) nixie_bits  |=  RIGHT_DP2;
-			else              nixie_bits8 |=  LEFT_DP3;
-			if (dst_active)   nixie_bits  |=  RIGHT_DP6;
-			else              nixie_bits  &= ~RIGHT_DP6;
+			if (p.min & 0x01) nixie_bits8  =  LEFT_DP3;
+			else              nixie_bits8  =  LEFT_DP3;
+			if (dst_active)   nixie_bits8  |=  LEFT_DP1;
+			else              nixie_bits8  &= ~LEFT_DP1;
 			break;
 	  } // switch
 	} // else
 } // display_task()
-
 
 /*------------------------------------------------------------------------
 Purpose  : Anti Nixie poisoning routine
@@ -851,82 +845,75 @@ Purpose  : Set the correct time in the DS3231 module via IRremote
 Variables: -
 Returns  : -
 ------------------------------------------------------------------------*/
-
 void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 {
 	switch (y)
 	{
 		case 0:
-		nixie_bits |= x;
-		clear_nixie(1);
-		clear_nixie(2);
-		clear_nixie(3);
-		clear_nixie(4);
-		clear_nixie(5);
-		
-				
-		break;
+			nixie_bits |= x;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
+			clear_nixie(4);
+			clear_nixie(5);
+			break;
 		
 		case 1:
-		nixie_bits <<= 4;
-		nixie_bits |= x;
-		clear_nixie(1);
-		clear_nixie(2);
-		clear_nixie(3);
-		clear_nixie(4);
-				
-		break;
+			nixie_bits <<= 4;
+			nixie_bits |= x;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
+			clear_nixie(4);
+			break;
 
 		case 2:
-		nixie_bits <<= 4;
-		nixie_bits |= x;
-		clear_nixie(1);
-		clear_nixie(2);
-		clear_nixie(3);
-		
-		break;
+			nixie_bits <<= 4;
+			nixie_bits |= x;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
+			break;
 		
 		case 3:
-		nixie_bits <<= 4;
-		nixie_bits |= x;
-		clear_nixie(1);
-		clear_nixie(2);		
-		
-		break;
+			nixie_bits <<= 4;
+			nixie_bits |= x;
+			clear_nixie(1);
+			clear_nixie(2);		
+			break;
 
 		case 4:
-		nixie_bits <<= 4;
-		nixie_bits |= x;
-		clear_nixie(1);		
-		
-		break;
+			nixie_bits <<= 4;
+			nixie_bits |= x;
+			clear_nixie(1);		
+			break;
 		
 		case 5:
-		nixie_bits <<= 4;
-		nixie_bits |= x;
-				
-		break;
+			nixie_bits <<= 4;
+			nixie_bits |= x;
+			break;
 		
 		case 6:
-		nixie_bits &= 0x00000000;
-		PORTC &=~0x0F;
-		
-		break;
-		
+			nixie_bits = 0x00000000;
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+			break;
 	} //switch
 
-	nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
+	//nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
+	nixie_bits8 = 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
 	
 	if (z == 'T')
 	{
-		nixie_bits |=(RIGHT_DP2 | LEFT_DP5);
-		rgb_colour = YELLOW;
-	}
+		nixie_bits  |= LEFT_DP5;
+		nixie_bits8 |= LEFT_DP3;
+		ws2812b_fill_rgb(RED,GREEN,BLACK); // YELLOW
+	} // if
 	else if (z == 'D')
 	{
-		nixie_bits |=(LEFT_DP3 | RIGHT_DP4);
-		rgb_colour = GREEN;
-	}
+		nixie_bits  |= LEFT_DP5;
+		nixie_bits8 |= LEFT_DP3;
+		ws2812b_fill_rgb(BLACK, GREEN, BLACK); // GREEN
+	} // else if
 } // end set_nixie_timedate
 
 /*------------------------------------------------------------------------
@@ -957,12 +944,10 @@ void init_ports(void)
 	PORTB &= ~(IR_RCV); // disable pull-up resistors
 	DDRB  |=  (TIME_MEAS | WS2812_DI | HV_ON); // set bits = output
 	PORTB &= ~(TIME_MEAS | WS2812_DI | HV_ON); // init. outputs to 0
-	DDRC |=(0x0F);   // set bits C3 t/m C0 as output
-	PORTC &=~(0x0F); // set outputs to 0
-	
+	DDRC  |=  (0x0F);   // set bits C3 t/m C0 as output
+	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 	DDRD  |=  (SDIN | SHCP | STCP); // set bits = output
 	PORTD &= ~(SDIN | SHCP | STCP); // set outputs to 0
-	
 } // init_ports()
 
 /*------------------------------------------------------------------------
@@ -973,17 +958,16 @@ Returns  : -
 ------------------------------------------------------------------------*/
 int main(void)
 {
-	
-	Time    p; // Time struct
 	char s[20];
 	
 	init_timer2(); // init. timer for scheduler and IR-receiver 
 	ir_init();     // init. IR-library
 	i2c_init(SCL_CLK_400KHZ); // Init. I2C HW with 400 kHz clock
 	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
+	srand(59);	   // Initialize random generator from 0 - 59
 	
-	srand(59);		// Initialize random generator from 0 - 59
-	
+	// BME2080 initialization
+	//bme280_init();
 	
 	// Initialize Serial Communication, See usart.h for BAUD
 	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
@@ -1006,18 +990,24 @@ int main(void)
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
 	
+	ws2812b_fill_rgb(BLACK, BLACK, BLACK); // Init. WS2812b RGB Leds to black 
+	
+	// Main routine 
 	while(1)
 	{   // Run all scheduled tasks here
 		//ds3231_gettime(&p);
 		dispatch_tasks(); // Run Task-Scheduler
 		switch (rs232_command_handler()) // run command handler continuously
 		{
-			case ERR_CMD: xputs("Command Error\n");
-			break;
-			case ERR_NUM: sprintf(s,"Number Error (%s)\n",rs232_inbuf);
-			xputs(s);
-			break;
-			default     : break;
+			case ERR_CMD: 
+			     xputs("Command Error\n");
+				 break;
+			case ERR_NUM: 
+			     sprintf(s,"Number Error (%s)\n",rs232_inbuf);
+				 xputs(s);
+				 break;
+			default: 
+			     break;
 		} // switch
 	} // while
 } // main()

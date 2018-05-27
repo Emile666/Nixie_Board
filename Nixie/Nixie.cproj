@@ -18,7 +18,8 @@
     <ToolchainFlavour>Native</ToolchainFlavour>
     <KeepTimersRunning>true</KeepTimersRunning>
     <OverrideVtor>false</OverrideVtor>
-    <OverrideVtorValue>exception_table</OverrideVtorValue>
+    <OverrideVtorValue>
+    </OverrideVtorValue>
     <eraseonlaunchrule>0</eraseonlaunchrule>
     <AsfVersion>3.5.0</AsfVersion>
     <CacheFlash>true</CacheFlash>
@@ -110,12 +111,6 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="command_interpreter.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="dht22.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="dht22.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="eep.c">
