@@ -25,9 +25,6 @@
 
 #include "i2c.h"
 
-// Set to 1 to print sensor outputs
-#define DEBUG_SENSORS (0)
-
 //------------------------
 // PORTB Defines
 //------------------------

@@ -18,9 +18,9 @@ bool		  nixie_lifetimesaver = false;		// Toggle nixie's on (false), no LST or of
 bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *2 IR remote 	
 uint8_t       cnt_50usec  = 0;					// 50 usec. counter
 unsigned long t2_millis   = 0UL;				// msec. counter
-double        bme280_pressure = 0.0;			// Pressure E-1 mbar
-double        bme280_temp     = 0.0;			// Temperature E-1 Celsius
-double		  bme280_hum	  = 0.0;			// Humidity E-1 %		
+uint32_t      bme280_press = 0.0;			// Pressure E-1 mbar
+int16_t       bme280_temp  = 0;	  		    // Temperature in E-2 Celsius
+uint32_t	  bme280_hum   = 0;				// Humidity in Q22.10 format		
 
 bool          dst_active      = false;			// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
@@ -51,8 +51,6 @@ bool          hv_relay_sw;    // switch for hv_relay
 bool          hv_relay_fx;    // fix for hv_relay
 
 extern char   rs232_inbuf[];       // RS232 input buffer
-
-//struct bme280_dev dev;
 
 //---------------------------------------------------------------------------
 // Copy to hardware PCB v0.21: MSB (bit 39) first --> LSB (bit 00)
@@ -260,14 +258,14 @@ void check_and_set_summertime(Time p)
 /*------------------------------------------------------------------------
   Purpose  : This task is called by the Task-Scheduler every 5 seconds.
              It reads the BME280 pressure and temperature.
-  Variables: bme280_pressure, bme280_temperature
+  Variables: bme280_pressure, bme280_temp
   Returns  : -
   ------------------------------------------------------------------------*/
 void bme280_task(void)
 {
-	int32_t temp;
-	
-	temp = bme280_temperature();
+	bme280_temp  = bme280_temperature();
+	bme280_press = bme280_pressure();
+	bme280_hum   = bme280_humidity();
 } // bme280_task()
 
 /*------------------------------------------------------------------------
@@ -560,8 +558,6 @@ void display_task(void)
 {
 	Time    p; // Time struct
 	uint8_t x, y ;
-	char    s2[40]; // Used for printing to RS232 port
-	uint8_t blank_zero;
 	
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
@@ -573,7 +569,6 @@ void display_task(void)
 		 y = 0;
 	else y = p.sec; // End time_only
 
-	
 	if (random_rgb_pattern == true)
 	{
 		fixed_random_rgb_colour(p.sec, true);
@@ -661,27 +656,33 @@ void display_task(void)
 			} // if
 			break;
 		
-		// case 30: // display humidity
-		// case 31:
-			// x = ((dht22_hum + Cal_Hum) / 10);	//Cal_Hum defined in Nixie.h to compensate DHT22 RH% mismatch
-			// nixie_bits = encode_to_bcd(x);
-			// nixie_bits <<= 4;
-			// nixie_bits |= ((dht22_hum + Cal_Hum) - 10 * x);
-			// nixie_bits |= RIGHT_DP5;
-			// clear_nixie(1);
-			// clear_nixie(2);
-			// clear_nixie(3);
+		case 30: // display humidity
+		case 31:
+			x = (uint8_t)(bme280_hum / 1000); // 46333 E-3 % = 46.333 %
+			nixie_bits = encode_to_bcd(x);
+			nixie_bits <<= 8;
+			x = (uint8_t)(bme280_hum - 1000 * x); // 333
+			y = (uint8_t)(x / 10);                // 33
+			nixie_bits |= encode_to_bcd(y);
+			nixie_bits <<= 4;
+			x -= 10 * y;
+			nixie_bits |= x;
 			
-			// PORTC &=~(0x0F);
-			// PORTC |= HUMIDITYSYMBOL;
-			// PORTC |= LED_IN19A;
+			PORTC &= ~(DEGREESYMBOL | PRESSURESYMBOL);
+			PORTC |= HUMIDITYSYMBOL;
+			PORTC |= LED_IN19A;
 			
-			// if (default_rgb_pattern == true)
-			// {
-				// rgb_colour = BLUE;
-			// }
-					
-		// break;
+			clear_nixie(1);
+			if (bme280_hum < 10000)	// Blank when hum < 10.000 %
+			{
+				clear_nixie(2);
+			} // if
+
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = BLUE;
+			}
+			break;
 		
 		//case 37: // display dewpoint
 		//case 38:
@@ -705,22 +706,11 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
-			//x = (uint8_t)bme280_temp;
-			//bme280_temp = bme280_readTemperature();
-			x = bme280_temp * 10;
-			
-			blank_zero = x;
-			
-			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 4;
-			nixie_bits |= (uint8_t)(10.0 * (bme280_temp - x));
-			//nixie_bits <<= 12;
-			
-			//x = dht22_temp / 10;
-			//nixie_bits = encode_to_bcd(x);
-			//nixie_bits <<= 4;
-			//nixie_bits |= (dht22_temp - 10 * x);
-			nixie_bits |= LEFT_DP6;
+			x = bme280_temp / 100;
+			nixie_bits   = encode_to_bcd(x);
+			nixie_bits <<= 8;
+			nixie_bits  |= encode_to_bcd(bme280_temp - 100 * x);
+			nixie_bits  |= LEFT_DP6;
 			
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |= DEGREESYMBOL;
@@ -728,15 +718,9 @@ void display_task(void)
 			
 			clear_nixie(1);
 			clear_nixie(2);
-			clear_nixie(3);
-
-			xputs("Blank_zero Temp ");
-			sprintf(s2,"%d\n",blank_zero);
-			xputs(s2);
-			
-			if (blank_zero < 10)	// Blank 0 when temp < 10,0 degrees
+			if (bme280_temp < 1000)	// Blank when temp < 10.00 degrees
 			{
-				clear_nixie(4);
+				clear_nixie(3);
 			} // if
 			
 			if (default_rgb_pattern == true)
@@ -748,18 +732,14 @@ void display_task(void)
 
 		case 50: // display Pressure in mbar
 		case 51:
-			
-			//bme280_pressure = bme280_readPressure();
-			x = (uint8_t)(bme280_pressure / 100.0);
-			
-			blank_zero = x;
-			
+			x = (uint8_t)(bme280_press / 1000); // 10197 = 1019.7 mbar
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
-			x = (uint8_t)(bme280_pressure - (int16_t)x * 100);
-			nixie_bits |= encode_to_bcd(x);
+			x = (uint8_t)(bme280_press - 1000 * x); // 197
+			y = (uint8_t)(x / 10);                  // 19
+			nixie_bits |= encode_to_bcd(y);
 			nixie_bits <<= 4;
-			x = (uint8_t)(10 * (bme280_pressure - (int16_t)bme280_pressure));
+			x -= 10 * y;
 			nixie_bits |= x;
 			nixie_bits |= LEFT_DP6;
 
@@ -768,13 +748,7 @@ void display_task(void)
 			PORTC |= LED_IN19A;
 			
 			clear_nixie(1);
-			
-			xputs("Blank_zero Pressure ");
-			sprintf(s2,"%d\n",blank_zero);
-			xputs(s2);
-			
-			
-			if (blank_zero < 10)	// Blank zero when pressure < 1000,0 mBar
+			if (bme280_press < 10000)	// Blank zero when pressure < 1000,0 mBar
 			{
 				clear_nixie(2);
 			} // if
@@ -917,7 +891,7 @@ void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 		nixie_bits8 |= LEFT_DP3;
 		ws2812b_fill_rgb(BLACK, GREEN, BLACK); // GREEN
 	} // else if
-} // end set_nixie_timedate
+} // set_nixie_timedate()
 
 /*------------------------------------------------------------------------
 Purpose  : This function initializes Timer 2 for a 20 kHz (50 usec.)
