@@ -49,21 +49,37 @@
 #define STCP (0x40)
 #define SDIN (0x20)
 
-//------------------------
+//-----------------------------------
 // RGB LED Defines
-//------------------------
-#define RED         (0xFF)
-#define GREEN       (0xFF)
-#define BLUE        (0xFF)
-#define YELLOW      (RED |GREEN)
-#define CYAN        (BLUE|GREEN)
-#define MAGENTA     (RED | BLUE)
-#define WHITE       (RED |GREEN|BLUE)
-#define BLACK       (0x00)
+// 32-bits long: 0x00 red green blue
+//-----------------------------------
+#define RGB_BLACK       (0x00000000)
+#define RGB_RED         (0x00FF0000)
+#define RGB_GREEN       (0x0000FF00)
+#define RGB_BLUE        (0x000000FF)
+#define RGB_YELLOW      (RGB_RED |RGB_GREEN)
+#define RGB_CYAN        (RGB_BLUE|RGB_GREEN)
+#define RGB_MAGENTA     (RGB_RED | RGB_BLUE)
+#define RGB_WHITE       (RGB_RED |RGB_GREEN|RGB_BLUE)
+
+#define BLACK   (0)
+#define RED     (1)
+#define GREEN   (2)
+#define BLUE    (3)
+#define YELLOW  (4)
+#define MAGENTA (5)
+#define CYAN    (6)
+#define WHITE   (7)
 
 #define NIXIE_CLEAR (10UL)
 #define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
 #define WH_MAX          (10)
+
+// RGB-pattern mode
+#define OFF     (0) /* WS2812 leds are off */
+#define RANDOM  (1) /* Color is selected random */
+#define DYNAMIC (2) /* Color is selected by seconds */
+#define FIXED   (3) /* Color is selected by fixed_rgb_colour */
 
 //-----------------------------------
 // Nixie Decimal Points:
@@ -120,10 +136,11 @@
 #define Cal_Hum (100)
 
 uint32_t millis(void);
-void          delay_msec(uint16_t ms);
-void          ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812b_blue);
-void          ws2812b_send_byte(uint8_t bt);
-void          ws2812_send_all(void);
+void     delay_msec(uint16_t ms);
+void     ws2812b_fill_rgb(uint32_t color);
+void     ws2812b_send_byte(uint8_t bt);
+void     ws2812_send_all(void);
+void     set_rgb_colour(uint8_t color);
 void          check_and_set_summertime(Time p);
 void          bme280_task(void);
 void          update_nixies(void);

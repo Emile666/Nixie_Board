@@ -18,6 +18,7 @@
 #include "i2c.h"
 #include "command_interpreter.h"
 #include "eep.h"
+#include "Nixie.h"
 
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
@@ -38,8 +39,7 @@ extern  uint8_t col_pres;
 extern  uint8_t col_roll;
 extern  bool    hv_relay_sw;  // switch for hv_relay
 extern  bool    hv_relay_fx;  // fix for hv_relay
-
-
+extern  uint8_t rgb_pattern;  // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -235,15 +235,23 @@ uint8_t execute_single_command(char *s)
 				      rval       = ERR_NUM;
 				 else rgb_colour = num;
 				 break;
+
+	   case 'm': // Set RGB mode command [0=OFF, 1=RANDOM, 2=DYNAMIC, 3=FIXED]
+				 if (num > 4)
+				      rval = ERR_NUM;
+				 else if (num == 4)
+				 {
+					 sprintf(s2,"rgb_pattern=%d\n",rgb_pattern);
+					 xputs(s2);
+				 } // else if
+				 else rgb_pattern = num;
+				 break;
 				 
 	   case 's': // System commands
 				 switch (num)
 				 {
 					 case 0: // revision
-							 xputs("\n");
-							 xputs("Nixie board v0.2\n");
-							 xputs("Manufactured by X-Lent Electronics and vdLogt\n");
-							 xputs("Copyright protected by Dutch law\n");
+							 xputs("\nNixie board v0.3\n");
 							 break;
 					 case 1: // List all I2C devices
 					         i2c_scan();
@@ -252,7 +260,7 @@ uint8_t execute_single_command(char *s)
 							 list_all_tasks(); 
 							 break;
 					 case 3: // test nixies
-					         test_nixies = true;
+					         test_nixies = !test_nixies;
 							 break;	
 					 default: rval = ERR_NUM;
 							  break;
@@ -277,6 +285,7 @@ uint8_t execute_single_command(char *s)
 							 rval = ERR_NUM;
 							 break;
 				 } // switch
+				 break;
 
 	   case 'w': // Set wheel-effect
 				 if (num > 2)

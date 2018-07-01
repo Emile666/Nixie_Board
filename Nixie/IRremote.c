@@ -40,21 +40,16 @@
 #include "scheduler.h"
 
 bool time_only = false;					// Shows only time on the Nixies. time_only=false -> date and sensors are displayed
-bool default_rgb_pattern = false;		// Sets the RGB colour to a default pattern
-bool random_rgb_pattern = false;		// Changes when true the RGB led per second in a random pattern from colour
-bool fixed_rgb_pattern = false;			// Changes when true the RGB led per second in a fixed pattern from colour
 bool display_60sec = false;				// Display time, date and sensor output for 60 sec. during Nixie life time saver period
 bool toggle_nixie_lifetimesaver = false;// Used to set nixie_lifetimesaver back to its original state before override_lifetiemsaver came active
 
-
-uint8_t fixed_rgb_colour = BLACK;		// RGB colour variable used in Nixie.c
+extern uint8_t rgb_pattern;             // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
+extern uint8_t fixed_rgb_colour;        // Color when rgb_pattern is FIXED
 
 extern uint8_t test_nixies;				// Sets Nixie clock in test mode
 extern bool nixie_lifetimesaver;		// Sets Nixie clock in Life Time Saving mode
 extern bool override_lifetimesaver;		// Override Blanking function
 extern uint8_t wheel_effect;			// Wheel-effect on every second and minute change
-
-
 
 // Allow all parts of the code access to the ISR data
 // NB. The data can be changed by the ISR at any time, even mid-function
@@ -304,82 +299,39 @@ void std_cmd(void)
 		case NO_CMD:	if (ir_remote_key == IR_ASTERISK)
 						{
 							cmd_state = CMD_MODE_ASTRIX;
-						}
+						} // if
 						else if (ir_remote_key == IR_HASH)
 						{
 							cmd_state = CMD_MODE_HASH;
-						}
-												
+						} // else if
 						else if (ir_remote_key <= IR_7)		// RGB colour
 						{
-							//idx = 0;
-							default_rgb_pattern = false;
-							random_rgb_pattern = false;
-							fixed_rgb_pattern = false;
-							
+							rgb_pattern      = FIXED;
 							fixed_rgb_colour = ir_remote_key;
-
-						}						
-						else if (ir_remote_key == IR_8)		// Change per second the RGB colour in a fixed pattern
+						} // else if
+						else if (ir_remote_key == IR_8)		// Change RGB colour mode
 						{
-							//idx  = 0;
-							default_rgb_pattern = false;
-							
-							if (fixed_rgb_pattern == false)
-							{
-								random_rgb_pattern = false;
-								fixed_rgb_pattern = true;
-							}
-							else
-							{
-								default_rgb_pattern = true;
-								fixed_rgb_pattern = false;
-							}
-						}
-						else if (ir_remote_key == IR_9)		// Change per second the RGB colour in a random pattern 
-						{
-							//idx  = 0;
-							fixed_rgb_pattern = false;
-							
-							if (random_rgb_pattern == false)
-							{
-								default_rgb_pattern = false;
-								random_rgb_pattern = true;
-							}
-							else
-							{
-								default_rgb_pattern = true;
-								random_rgb_pattern = false;
-							}
+							if (++rgb_pattern > FIXED) 
+							   rgb_pattern = OFF;
 						}
 						break;
 					   
 		case CMD_MODE_HASH: if (ir_remote_key == IR_1)			// #1 - Set time via Nixie tubes
 							{
 								idx = 0;
-																								
 								disable_task("Display");
-								
 								wheel_effect = 0;
-								
 								set_nixie_timedate(0, 6, 'T');
-								
 								cmd_state = CMD_TIME;
-						
-							}
+							} // if
 							else if (ir_remote_key == IR_2)		// #2 - Set date via Nixie tubes
 							{
 								idx = 0;
-														
 								disable_task("Display");
-								
 								wheel_effect = 0;
-								
 								set_nixie_timedate(0, 6, 'D');
-																
 								cmd_state = CMD_DATE;
-								
-							}
+							} // else if
 							else if (ir_remote_key == IR_7)		 // #3 - Set Nixie in Life Time Save mode (LST)
 							{
 								//idx  = 0;
@@ -469,9 +421,9 @@ void std_cmd(void)
 								 switch (ir_remote_key)
 								 {
 									case 7: wheel_effect = 1;			// Wheel-effect from second change 59 -> 0 
-									break;
+											break;
 									case 8: wheel_effect = 2;			// wheel-effect every second and change in minutes
-									break;
+											break;
 									case 9: wheel_effect = 0;			// No Wheel-effect
 								  }
 								  eeprom_write_byte(EEPARB_WHEEL,wheel_effect);

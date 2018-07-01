@@ -22,35 +22,34 @@ uint32_t      bme280_press = 0.0;			// Pressure E-1 mbar
 int16_t       bme280_temp  = 0;	  		    // Temperature in E-2 Celsius
 uint32_t	  bme280_hum   = 0;				// Humidity in Q22.10 format		
 
-bool          dst_active      = false;			// true = Daylight Saving Time active
+bool          dst_active      = false;		// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
 
-extern bool time_only;				// Toggles between time and date only with no RGB to all task shown
-extern bool default_rgb_pattern;	// Set RGB colour to a default pattern
-extern bool random_rgb_pattern;		// Change per second the RGB colour in a random pattern
-extern bool fixed_rgb_pattern;		// Change per second the RGB colour in a fix pattern	
-extern bool display_60sec;			// Display time, date and sensor outputs for 60 sec.
-extern uint8_t fixed_rgb_colour;
+extern bool time_only;				  // Toggles between time and date only with no RGB to all task shown
+extern bool display_60sec;			  // Display time, date and sensor outputs for 60 sec.
+
+uint8_t rgb_pattern = FIXED;		  // RGB color mode: [OFF, RANDOM, DYNAMIC, FIXED]
+uint8_t fixed_rgb_colour = CYAN;	  // RGB colour variable used in Nixie.c
 
 uint8_t       wheel_effect    = 0;    // 0: none, 1: from 59->00, 2: every second/minute
 bool          display_time    = true; // true = hh:mm:ss is on display 
-uint8_t		  col_time;       // Colour for Time display
-uint8_t		  col_date;       // Colour for Date & Year display
-uint8_t       col_temp;       // Colour for Temperature display
-uint8_t       col_humi;       // Colour for Humidity display
-uint8_t       col_dewp;       // Colour for Dew-point display
-uint8_t       col_pres;       // Colour for Pressure display
-uint8_t       col_roll;       // Colour for second roll-over
-uint8_t       led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
-uint8_t       led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
-uint8_t       led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
-bool          hv_relay_sw;    // switch for hv_relay
-bool          hv_relay_fx;    // fix for hv_relay
+uint8_t		  col_time;               // Colour for Time display
+uint8_t		  col_date;               // Colour for Date & Year display
+uint8_t       col_temp;               // Colour for Temperature display
+uint8_t       col_humi;               // Colour for Humidity display
+uint8_t       col_dewp;               // Colour for Dew-point display
+uint8_t       col_pres;               // Colour for Pressure display
+uint8_t       col_roll;               // Colour for second roll-over
+uint8_t       led_r[NR_LEDS];         // Array with 8-bit red colour for all WS2812
+uint8_t       led_g[NR_LEDS];         // Array with 8-bit green colour for all WS2812
+uint8_t       led_b[NR_LEDS];         // Array with 8-bit blue colour for all WS2812
+bool          hv_relay_sw;            // switch for hv_relay
+bool          hv_relay_fx;            // fix for hv_relay
 
-extern char   rs232_inbuf[];       // RS232 input buffer
+extern char   rs232_inbuf[];          // RS232 input buffer
 
 //---------------------------------------------------------------------------
 // Copy to hardware PCB v0.21: MSB (bit 39) first --> LSB (bit 00)
@@ -118,20 +117,22 @@ ISR(TIMER2_COMPA_vect)
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine fills the led_<x>[NR_LEDS] array.
-  Variables: ws2812b_red, ws2812b_green, ws2812b_blue : the byte to fill
+  Variables: color: the 24-bit color info
   Returns  : -
   ---------------------------------------------------------------------------*/
-void ws2812b_fill_rgb(uint8_t ws2812b_red, uint8_t ws2812b_green, uint8_t ws2812b_blue)
+void ws2812b_fill_rgb(uint32_t color)
 {
-	uint8_t i;
+	uint8_t i,r,g,b;
 	
+	r = (uint8_t)((color & RGB_RED)   >> 16);
+	g = (uint8_t)((color & RGB_GREEN) >>  8);
+	b = (uint8_t)( color & RGB_BLUE);
 	for (i = 0; i < NR_LEDS; i++)
 	{
-		led_g[i] = ws2812b_green;
-		led_r[i] = ws2812b_red;
-		led_b[i] = ws2812b_blue;
+		led_g[i] = g;
+		led_r[i] = r;
+		led_b[i] = b;
 	} // for i
-	ws2812_send_all();	
 } // ws2812b_fill_rgb()
 
 /*-----------------------------------------------------------------------------
@@ -169,7 +170,7 @@ void ws2812b_send_byte(uint8_t bt)
 void ws2812_send_all(void)
 {
     uint8_t i;
-
+	
     cli(); // disable IRQ for time-sensitive LED-timing
     for (i = 0; i < NR_LEDS; i++)
     {
@@ -428,8 +429,7 @@ void clear_nixie(uint8_t nr)
 		
 	if (nr == 0)
 	{
-		//rgb_colour = BLACK;
-		ws2812b_fill_rgb(BLACK, BLACK, BLACK);
+		set_rgb_colour(BLACK);
 		PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 		
 		for (nr = 1; nr < 7; ++nr)
@@ -488,50 +488,20 @@ void ftest_nixies(void)
   Variables: -
   Returns  : -
   ------------------------------------------------------------------------*/
-void fixed_random_rgb_colour(uint8_t s, bool rndm)
+void set_rgb_colour(uint8_t color)
 {
-	
-	if (rndm == true )
+	switch (color)
 	{
-		s = rand() % 60;
-	}
-	
-	switch (s % 7)
-	{
-		case 0:
-			//rgb_colour = WHITE;	
-			ws2812b_fill_rgb(RED, GREEN, BLUE);
-			break;
-		case 1:
-			//rgb_colour = RED;
-			ws2812b_fill_rgb(RED, BLACK, BLACK);
-			break;
-		case 2:
-			//rgb_colour = GREEN;
-			ws2812b_fill_rgb(BLACK, GREEN, BLACK);
-			break;
-		case 3:
-			//rgb_colour = BLUE;
-			ws2812b_fill_rgb(BLACK, BLACK, BLUE);
-			break;
-		case 4:
-			//rgb_colour = YELLOW;
-			ws2812b_fill_rgb(RED, GREEN, BLACK);
-			break;
-		case 5:
-			//rgb_colour = MAGENTA;
-			ws2812b_fill_rgb(RED, BLACK, BLUE);
-			break;
-		case 6:
-			//rgb_colour = CYAN;
-			ws2812b_fill_rgb(BLACK, GREEN, BLUE);
-			break;
-		default:
-			//rgb_colour = BLACK;
-			ws2812b_fill_rgb(BLACK, BLACK, BLACK);
-			break;	
+		case WHITE:   ws2812b_fill_rgb(RGB_WHITE);   break;
+		case RED:     ws2812b_fill_rgb(RGB_RED);     break;
+		case GREEN:   ws2812b_fill_rgb(RGB_GREEN);   break;
+		case BLUE:    ws2812b_fill_rgb(RGB_BLUE);    break;
+		case YELLOW:  ws2812b_fill_rgb(RGB_YELLOW);  break;
+		case MAGENTA: ws2812b_fill_rgb(RGB_MAGENTA); break;
+		case CYAN:    ws2812b_fill_rgb(RGB_CYAN);    break;
+		default:      ws2812b_fill_rgb(RGB_BLACK);   break;	
 	} // switch
-} // fixed_random_rgb_colour
+} // set_rgb_colour
 
 /*------------------------------------------------------------------------
   Purpose  : This function decides if the current time falls between the
@@ -557,58 +527,29 @@ bool blanking_active(Time p)
 void display_task(void)
 {
 	Time    p; // Time struct
-	uint8_t x, y ;
+	uint8_t c,x,y;
+	char    s[30];
 	
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
 	ds3231_gettime(&p);
 	display_time = false;     // start with no-time on display
 	
+	switch (rgb_pattern)
+	{
+		case RANDOM:  c = rand() % 8;       break;
+		case DYNAMIC: c = p.sec % 8;        break;
+		case FIXED:   c = fixed_rgb_colour; break;
+		case OFF:
+		default:      c = BLACK;            break;   
+	} // switch
+	set_rgb_colour(c);
 	
-	if (time_only == true) 	  // *0 IR remote
-		 y = 0;
-	else y = p.sec; // End time_only
-
-	if (random_rgb_pattern == true)
+	if (test_nixies) 
 	{
-		fixed_random_rgb_colour(p.sec, true);
-	}
-	else if (fixed_rgb_pattern == true)
-	{
-		fixed_random_rgb_colour(p.sec, false);
-	}
-	else if (default_rgb_pattern == false)
-	{
-		switch (fixed_rgb_colour)
-		{
-			case 0: // rgb_colour = BLACK;
-				ws2812b_fill_rgb(BLACK, BLACK, BLACK);
-				break;
-			case 1: // rgb_colour = RED;
-				ws2812b_fill_rgb(RED, BLACK, BLACK);
-				break;
-			case 2: //rgb_colour = GREEN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
-				break;
-			case 3: //rgb_colour = BLUE;
-				ws2812b_fill_rgb(BLACK, BLACK, BLUE);
-				break;
-			case 4: // rgb_colour = YELLOW;
-				ws2812b_fill_rgb(RED, GREEN, BLACK);
-				break;
-			case 5: // rgb_colour = MAGENTA;
-				ws2812b_fill_rgb(RED, BLACK, BLUE);
-				break;
-			case 6: // rgb_colour = CYAN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLUE);
-				break;
-			case 7: //rgb_colour = WHITE;
-				ws2812b_fill_rgb(RED, GREEN, BLUE);
-				break;
-		} // End Switch
-	} // End random_rgb_pattern
-	
-	if (test_nixies) ftest_nixies(); // S3 command
+		ftest_nixies(); // S3 command
+		return;
+	} // if	
 	else if (hv_relay_sw)
 	{   // V0 or V1 command
 		if (hv_relay_fx)
@@ -616,12 +557,11 @@ void display_task(void)
 		else PORTB &= ~HV_ON; // relay off
 	} // else if
 	else if (blanking_active(p))
-		PORTB &= ~HV_ON; // relay off
-	else
-	{
-	  PORTB |=  HV_ON; // relay on	
-	  switch(p.sec)
-	  { 
+		 PORTB &= ~HV_ON; // relay off
+	else PORTB |=  HV_ON; // relay on	
+	
+	switch (p.sec)
+	{ 
 		case 15: // display date & month
 		case 16:
 			check_and_set_summertime(p); // check for Summer/Wintertime change
@@ -632,10 +572,9 @@ void display_task(void)
 			clear_nixie(3);
 			clear_nixie(6);
 			
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				//rgb_colour = GREEN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+				set_rgb_colour(GREEN);
 			} // if			
 			break;
 		
@@ -649,10 +588,9 @@ void display_task(void)
 			clear_nixie(1);
 			clear_nixie(6);
 			
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				//rgb_colour = GREEN;
-				ws2812b_fill_rgb(BLACK, GREEN, BLACK);
+				set_rgb_colour(GREEN);
 			} // if
 			break;
 		
@@ -667,6 +605,7 @@ void display_task(void)
 			nixie_bits <<= 4;
 			x -= 10 * y;
 			nixie_bits |= x;
+			nixie_bits8 = LEFT_DP4;
 			
 			PORTC &= ~(DEGREESYMBOL | PRESSURESYMBOL);
 			PORTC |= HUMIDITYSYMBOL;
@@ -678,10 +617,10 @@ void display_task(void)
 				clear_nixie(2);
 			} // if
 
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				rgb_colour = BLUE;
-			}
+				set_rgb_colour(BLUE);
+			} // if
 			break;
 		
 		//case 37: // display dewpoint
@@ -710,7 +649,7 @@ void display_task(void)
 			nixie_bits   = encode_to_bcd(x);
 			nixie_bits <<= 8;
 			nixie_bits  |= encode_to_bcd(bme280_temp - 100 * x);
-			nixie_bits  |= LEFT_DP6;
+			nixie_bits  |= LEFT_DP5;
 			
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |= DEGREESYMBOL;
@@ -723,10 +662,9 @@ void display_task(void)
 				clear_nixie(3);
 			} // if
 			
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				//rgb_colour = RED;
-				ws2812b_fill_rgb(RED, BLACK, BLACK);
+				set_rgb_colour(RED);
 			} // if
 			break;
 
@@ -753,11 +691,10 @@ void display_task(void)
 				clear_nixie(2);
 			} // if
 				
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				//rgb_colour = CYAN;
-				ws2812b_fill_rgb(RED, BLACK, BLUE);
-			} // if
+				set_rgb_colour(CYAN);
+			} // if			
 			break;
 	
 		default: // display normal time
@@ -769,11 +706,6 @@ void display_task(void)
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-			if (default_rgb_pattern == true)
-			{
-				//rgb_colour = YELLOW;
-				ws2812b_fill_rgb(RED, GREEN, BLACK);
-			}
 			// NOTE: LEFT_DP1..LEFT_DP4 are contained in upper 8 bits!
 			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
 			else              nixie_bits  |=  LEFT_DP5;
@@ -782,8 +714,8 @@ void display_task(void)
 			if (dst_active)   nixie_bits8  |=  LEFT_DP1;
 			else              nixie_bits8  &= ~LEFT_DP1;
 			break;
-	  } // switch
-	} // else
+	} // switch
+	ws2812_send_all(); // Send color-bits to WS2812 leds
 } // display_task()
 
 /*------------------------------------------------------------------------
@@ -883,13 +815,13 @@ void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 	{
 		nixie_bits  |= LEFT_DP5;
 		nixie_bits8 |= LEFT_DP3;
-		ws2812b_fill_rgb(RED,GREEN,BLACK); // YELLOW
+		set_rgb_colour(YELLOW);
 	} // if
 	else if (z == 'D')
 	{
 		nixie_bits  |= LEFT_DP5;
 		nixie_bits8 |= LEFT_DP3;
-		ws2812b_fill_rgb(BLACK, GREEN, BLACK); // GREEN
+		set_rgb_colour(GREEN);
 	} // else if
 } // set_nixie_timedate()
 
@@ -943,9 +875,6 @@ int main(void)
 	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
 	srand(59);	   // Initialize random generator from 0 - 59
 	
-	// BME2080 initialization
-	//bme280_init();
-	
 	// Initialize Serial Communication, See usart.h for BAUD
 	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
 	usart_init(MYUBRR); // Initializes the serial communication
@@ -955,7 +884,6 @@ int main(void)
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
-	//add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
 	add_task(bme280_task  ,"BME280" ,250, 5000); // Run BMP180 sensor process every 5 seconds
 	
 	sei(); // set global interrupt enable, start task-scheduler
@@ -967,12 +895,9 @@ int main(void)
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
 	
-	ws2812b_fill_rgb(BLACK, BLACK, BLACK); // Init. WS2812b RGB Leds to black 
-	
 	// Main routine 
 	while(1)
 	{   // Run all scheduled tasks here
-		//ds3231_gettime(&p);
 		dispatch_tasks(); // Run Task-Scheduler
 		switch (rs232_command_handler()) // run command handler continuously
 		{

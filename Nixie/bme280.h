@@ -14,7 +14,7 @@
 #include "delay.h"
 
 // Set to 1 to print sensor outputs
-#define DEBUG_SENSORS (0)
+//#define DEBUG_SENSORS (1)
 
 // BME280 defines
 #define BME280_I2C_ADDR			(0xEC)	/* I2C base address with SDO to GND   */
