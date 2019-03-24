@@ -116,26 +116,6 @@ ISR(TIMER2_COMPA_vect)
 } // ISR()
 
 /*-----------------------------------------------------------------------------
-  Purpose  : This routine fills the led_<x>[NR_LEDS] array.
-  Variables: color: the 24-bit color info
-  Returns  : -
-  ---------------------------------------------------------------------------*/
-void ws2812b_fill_rgb(uint32_t color)
-{
-	uint8_t i,r,g,b;
-	
-	r = (uint8_t)((color & RGB_RED)   >> 16);
-	g = (uint8_t)((color & RGB_GREEN) >>  8);
-	b = (uint8_t)( color & RGB_BLUE);
-	for (i = 0; i < NR_LEDS; i++)
-	{
-		led_g[i] = g;
-		led_r[i] = r;
-		led_b[i] = b;
-	} // for i
-} // ws2812b_fill_rgb()
-
-/*-----------------------------------------------------------------------------
   Purpose  : This routine sends one byte to the WS2812B LED-string.
   Variables: bt: the byte to send
   Returns  : -
@@ -482,6 +462,35 @@ void ftest_nixies(void)
 	//rgb_colour = std_test & 0x07;
 } // ftest_nixies()
 
+/*-----------------------------------------------------------------------------
+  Purpose  : This routine fills the led_<x>[NR_LEDS] array. It uses the global
+             variable nixie_bits to enable/disable a specific led, so make sure
+			 this is set prior to calling this routine.
+  Variables: color: the 24-bit color info
+  Returns  : -
+  ---------------------------------------------------------------------------*/
+void ws2812b_fill_rgb(uint32_t color)
+{
+	uint8_t i,r,g,b;
+	
+	r = (uint8_t)((color & RGB_RED)   >> 16);
+	g = (uint8_t)((color & RGB_GREEN) >>  8);
+	b = (uint8_t)( color & RGB_BLUE);
+	for (i = 0; i < NR_LEDS; i++)
+	{
+		if ((nixie_bits >> (i<<2) & 0x0000000F) == NIXIE_CLEAR)
+		{
+			led_g[i] = led_r[i] = led_b[i] = 0x00; // disable led
+		}
+		else
+		{
+			led_g[i] = g;
+			led_r[i] = r;
+			led_b[i] = b;
+		} // else
+	} // for i
+} // ws2812b_fill_rgb()
+
 /*------------------------------------------------------------------------
   Purpose  : This functions is called when random_rgb == true.
 			 Called every second.
@@ -526,9 +535,10 @@ bool blanking_active(Time p)
   ------------------------------------------------------------------------*/
 void display_task(void)
 {
-	Time    p; // Time struct
-	uint8_t c,x,y;
-	char    s[30];
+	Time     p; // Time struct
+	uint8_t  c,x,y;
+	uint16_t r;
+	char     s[30];
 	
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
@@ -598,23 +608,22 @@ void display_task(void)
 		case 31:
 			x = (uint8_t)(bme280_hum / 1000); // 46333 E-3 % = 46.333 %
 			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 8;
-			x = (uint8_t)(bme280_hum - 1000 * x); // 333
-			y = (uint8_t)(x / 10);                // 33
-			nixie_bits |= encode_to_bcd(y);
 			nixie_bits <<= 4;
-			x -= 10 * y;
-			nixie_bits |= x;
-			nixie_bits8 = LEFT_DP4;
+			r = (uint8_t)(bme280_hum - 1000 * x); // 333
+			y = (uint8_t)((r + 50) / 100);        // 3
+			nixie_bits |= y;
+			nixie_bits |= LEFT_DP6;
 			
 			PORTC &= ~(DEGREESYMBOL | PRESSURESYMBOL);
 			PORTC |= HUMIDITYSYMBOL;
 			PORTC |= LED_IN19A;
 			
 			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
 			if (bme280_hum < 10000)	// Blank when hum < 10.000 %
 			{
-				clear_nixie(2);
+				clear_nixie(4);
 			} // if
 
 			if (rgb_pattern == FIXED)
@@ -645,11 +654,13 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
-			x = bme280_temp / 100;
+			x = bme280_temp / 100; // 3254 = 32.54 °C 
 			nixie_bits   = encode_to_bcd(x);
-			nixie_bits <<= 8;
-			nixie_bits  |= encode_to_bcd(bme280_temp - 100 * x);
-			nixie_bits  |= LEFT_DP5;
+			nixie_bits <<= 4;
+			r = bme280_temp - 100 * x; // 54
+			y = (uint8_t)((r + 50) / 100); // 5
+			nixie_bits |= y;
+			nixie_bits |= LEFT_DP6;
 			
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |= DEGREESYMBOL;
@@ -657,9 +668,10 @@ void display_task(void)
 			
 			clear_nixie(1);
 			clear_nixie(2);
+			clear_nixie(3);
 			if (bme280_temp < 1000)	// Blank when temp < 10.00 degrees
 			{
-				clear_nixie(3);
+				clear_nixie(4);
 			} // if
 			
 			if (rgb_pattern == FIXED)
@@ -693,7 +705,7 @@ void display_task(void)
 				
 			if (rgb_pattern == FIXED)
 			{
-				set_rgb_colour(CYAN);
+				set_rgb_colour(YELLOW);
 			} // if			
 			break;
 	

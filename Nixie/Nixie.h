@@ -54,9 +54,9 @@
 // 32-bits long: 0x00 red green blue
 //-----------------------------------
 #define RGB_BLACK       (0x00000000)
-#define RGB_RED         (0x00FF0000)
-#define RGB_GREEN       (0x0000FF00)
-#define RGB_BLUE        (0x000000FF)
+#define RGB_RED         (0x00400000)
+#define RGB_GREEN       (0x00004000)
+#define RGB_BLUE        (0x00000040)
 #define RGB_YELLOW      (RGB_RED |RGB_GREEN)
 #define RGB_CYAN        (RGB_BLUE|RGB_GREEN)
 #define RGB_MAGENTA     (RGB_RED | RGB_BLUE)
@@ -85,19 +85,19 @@
 // Nixie Decimal Points:
 // 1:HH, 2:HL, 3:MH, 4:ML, 5:SH, 6:SL
 //-----------------------------------
-#define LEFT_DP1  (0x08)
-#define LEFT_DP2  (0x04)
-#define LEFT_DP3  (0x02)
-#define LEFT_DP4  (0x01)
+#define LEFT_DP1  (0x08) /* for nixie_bits8 */
+#define LEFT_DP2  (0x04) /* for nixie_bits8 */
+#define LEFT_DP3  (0x02) /* for nixie_bits8 */
+#define LEFT_DP4  (0x01) /* for nixie_bits8 */
 
-#define LEFT_DP5  (0x80000000)
-#define LEFT_DP6  (0x40000000)
-#define RIGHT_DP1 (0x20000000)
-#define RIGHT_DP2 (0x10000000)
-#define RIGHT_DP3 (0x08000000)
-#define RIGHT_DP4 (0x04000000)
-#define RIGHT_DP5 (0x02000000)
-#define RIGHT_DP6 (0x01000000)
+#define LEFT_DP5  (0x80000000) /* for nixie_bits */
+#define LEFT_DP6  (0x40000000) /* for nixie_bits */
+#define RIGHT_DP1 (0x20000000) /* for nixie_bits */
+#define RIGHT_DP2 (0x10000000) /* for nixie_bits */
+#define RIGHT_DP3 (0x08000000) /* for nixie_bits */
+#define RIGHT_DP4 (0x04000000) /* for nixie_bits */
+#define RIGHT_DP5 (0x02000000) /* for nixie_bits */
+#define RIGHT_DP6 (0x01000000) /* for nixie_bits */
 
 //------------------------
 // BMP180 STD Defines
