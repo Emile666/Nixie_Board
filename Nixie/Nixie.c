@@ -609,7 +609,7 @@ void display_task(void)
 			x = (uint8_t)(bme280_hum / 1000); // 46333 E-3 % = 46.333 %
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			r = (uint8_t)(bme280_hum - 1000 * x); // 333
+			r = (uint16_t)(bme280_hum - 1000 * x); // 333
 			y = (uint8_t)((r + 50) / 100);        // 3
 			nixie_bits |= y;
 			nixie_bits |= LEFT_DP6;
@@ -654,11 +654,11 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
-			x = bme280_temp / 100; // 3254 = 32.54 °C 
+			x = (uint8_t)(bme280_temp / 100); // 3254 = 32.54 °C 
 			nixie_bits   = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			r = bme280_temp - 100 * x; // 54
-			y = (uint8_t)((r + 50) / 100); // 5
+			r = (uint16_t)(bme280_temp - 100 * x); // 54
+			y = (uint8_t)((r + 5) / 10); // 5
 			nixie_bits |= y;
 			nixie_bits |= LEFT_DP6;
 			
@@ -685,12 +685,12 @@ void display_task(void)
 			x = (uint8_t)(bme280_press / 1000); // 10197 = 1019.7 mbar
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
-			x = (uint8_t)(bme280_press - 1000 * x); // 197
-			y = (uint8_t)(x / 10);                  // 19
+			r = (uint16_t)(bme280_press - 1000 * x); // 197
+			y = (uint8_t)(r / 10);                   // 19
 			nixie_bits |= encode_to_bcd(y);
 			nixie_bits <<= 4;
-			x -= 10 * y;
-			nixie_bits |= x;
+			r -= 10 * y;
+			nixie_bits |= (uint8_t)r;
 			nixie_bits |= LEFT_DP6;
 
 			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
