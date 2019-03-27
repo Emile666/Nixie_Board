@@ -269,7 +269,7 @@ void update_nixies(void)
 	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
 	// Needed for PCB hardware v0.21 and higher
 	// nixie_bits: LDP RDP HH HL MH ML SH SL
-	// hardware  : LDP RDP SL SH ML MH HL HH
+	// bitstream : LDP RDP SL SH ML MH HL HH
 	bitstream  = (nixie_bits & 0xFF000000); // copy LDP and RDP bits
 	bitstream |= (nixie_bits & 0x0000000F) << 20; // SL
 	bitstream |= (nixie_bits & 0x000000F0) << 12; // SH
@@ -407,23 +407,8 @@ void clear_nixie(uint8_t nr)
 {
 	uint8_t shift;
 		
-	if (nr == 0)
-	{
-		set_rgb_colour(BLACK);
-		PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-		
-		for (nr = 1; nr < 7; ++nr)
-		{
- 			shift = 24 - 4 * nr;
- 			nixie_bits |= (NIXIE_CLEAR << shift);
-		} // for
-		nixie_bits &=0x00FFFFFF;		// Clear decimal point bits
-	} // if
-	else
-	{
-		shift = 24 - 4 * nr;
-		nixie_bits |= (NIXIE_CLEAR << shift);
-	} // else
+	shift = 24 - 4 * nr;
+	nixie_bits |= (NIXIE_CLEAR << shift);
 } // clear_nixie()
 
 /*------------------------------------------------------------------------
@@ -606,11 +591,12 @@ void display_task(void)
 		
 		case 30: // display humidity
 		case 31:
-			x = (uint8_t)(bme280_hum / 1000); // 46333 E-3 % = 46.333 %
+			r = bme280_hum + 50; // 50 is for round-off to next decimal
+			x = (uint8_t)(r / 1000); // 46333: 46333 + 50 E-3 % = 46.383 %
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			r = (uint16_t)(bme280_hum - 1000 * x); // 333
-			y = (uint8_t)((r + 50) / 100);        // 3
+			r = (uint16_t)(r - 1000 * x); // 383
+			y = (uint8_t)(r / 100);       // 3
 			nixie_bits |= y;
 			nixie_bits |= LEFT_DP6;
 			
@@ -654,11 +640,12 @@ void display_task(void)
 		
 		case 40: // display temperature
 		case 41:
-			x = (uint8_t)(bme280_temp / 100); // 3254 = 32.54 °C 
+			r = bme280_temp + 5;    // 5 is for round-off to next decimal
+			x = (uint8_t)(r / 100); // 3296 = 32.96 °C, display 33.0 
 			nixie_bits   = encode_to_bcd(x);
 			nixie_bits <<= 4;
-			r = (uint16_t)(bme280_temp - 100 * x); // 54
-			y = (uint8_t)((r + 5) / 10); // 5
+			r = (uint16_t)(r - 100 * x); // 01
+			y = (uint8_t)(r / 10);       // 0
 			nixie_bits |= y;
 			nixie_bits |= LEFT_DP6;
 			
@@ -689,7 +676,7 @@ void display_task(void)
 			y = (uint8_t)(r / 10);                   // 19
 			nixie_bits |= encode_to_bcd(y);
 			nixie_bits <<= 4;
-			r -= 10 * y;
+			r -= 10 * y;                             // 7
 			nixie_bits |= (uint8_t)r;
 			nixie_bits |= LEFT_DP6;
 
