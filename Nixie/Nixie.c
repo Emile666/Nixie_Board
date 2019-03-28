@@ -257,14 +257,15 @@ void bme280_task(void)
   ------------------------------------------------------------------------*/
 void update_nixies(void)
 {
-	uint8_t         i, x;
+	uint8_t         i, h, m, s;
 	uint32_t        mask;        // start with MSB
 	uint8_t         mask8;
 	uint32_t        bitstream;   // copy of nixie_bits
 	uint8_t         bitstream8;  // copy of nixie_bits8
-	static uint8_t  wheel_cnt_sec = 0, wheel_cnt_min = 0;
-	static uint8_t  bits_min_old, bits_sec_old;
+	static uint8_t  wheel_cntr = 0;
+	static uint8_t  bits_min_old, bits_sec_old, bits_hrs_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
+	uint8_t         effect;      // switch (wheel_effect)
 			
 	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
 	// Needed for PCB hardware v0.21 and higher
@@ -281,67 +282,72 @@ void update_nixies(void)
 	bitstream8 = nixie_bits8; // copy original bitstream
 	if (display_time)
 	{
-		//------------------------------------------
-		// Rotate the MINUTES digits (wheel-effect)
-		//------------------------------------------
-		x = (uint8_t)((nixie_bits & 0x0000FF00) >> 8); // isolate minutes digits
-		switch (wheel_effect)
+		//--------------------------------------------------------
+		// WHEEL-EFFECT: Rotate digits + ANTI-POISONING Function
+		//--------------------------------------------------------
+		h = (uint8_t)((nixie_bits & 0x00FF0000) >> 16); // isolate minutes digits
+		m = (uint8_t)((nixie_bits & 0x0000FF00) >>  8); // isolate minutes digits
+		s = (uint8_t)(nixie_bits  & 0x000000FF);        // isolate seconds digits
+		if (m == 0x30)   // BCD-code 30 == 0x30 
+		     effect = 1; // anti-poisoning effect
+		else effect = wheel_effect; // normal wheel-effect
+		switch (effect)
 		{
 			case 0: // no wheel-effect
-					wheel_cnt_min = 0;
+					wheel_cntr = 0;
 					break;
-			case 1: // wheel-effect from 59 -> 0
-					if (x == 0)
-					{	// minutes == 0, wheel-effect
-						bitstream |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
-						if (++wheel_cnt_min > WH_MAX-1) wheel_cnt_min = WH_MAX-1;
+			case 1: // wheel-effect from 59 -> 0 (minutes & seconds) + anti-poisoning effect from 29 -> 30
+					if (s == 0x00)
+					{	// seconds == 0, wheel-effect
+						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						if ((m == 0x00) || (m == 0x30))
+						{	// @0 min.: wheel-effect ; @30 min.: anti-poisoning effect
+							if (wheel_cntr < WH_MAX-1)
+							{
+								bitstream &= 0xFFFF00FF; // clear minutes bits
+								bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
+								if (m == 0x30)
+								{	// anti-poisoning effect also for hours
+									bitstream &= 0xFFFFFF00; // clear hours bits
+									bitstream |= ((uint32_t)wheel[wheel_cntr]); // hours
+								} // if
+							} // if							
+						} // if
+						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
 					} // if
-					else wheel_cnt_min = 0; // reset for next wheel-effect
+					else wheel_cntr = 0; // reset for next second
 					break;
-			case 2: // wheel-effect on every change in minutes
-					if (x != bits_min_old)
-					{	// change in minutes
-						bitstream   &= 0xFFFF00FF; // clear minutes bits
-						bitstream   |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
-						if (++wheel_cnt_min > WH_MAX-1)
+			case 2: // wheel-effect on every change in hours / minutes / seconds
+					if (s != bits_sec_old)
+					{	// change in seconds
+						bitstream &= 0xFF00FFFF; // clear seconds bits
+						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						if (m != bits_min_old)
+						{	// change in minutes
+							bitstream   &= 0xFFFF00FF; // clear minutes bits
+							bitstream   |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
+							if (wheel_cntr == WH_MAX-1)
+							{
+								bits_min_old = m;
+							} // if
+						} // if
+						if (h != bits_hrs_old)
+						{	// change in hours
+							bitstream   &= 0xFFFFFF00; // clear hours bits
+							bitstream   |= ((uint32_t)wheel[wheel_cntr]); // hours
+							if (wheel_cntr == WH_MAX-1)
+							{
+								bits_hrs_old = h;
+							} // if
+						} // if
+						if (++wheel_cntr > WH_MAX-1)
 						{
-							wheel_cnt_min = WH_MAX-1;
-							bits_min_old = x;
+							wheel_cntr   = WH_MAX-1;
+							bits_sec_old = s;
 						} // if
 					} // if
-					else wheel_cnt_min = 0; // reset for next minute
+					else wheel_cntr = 0; // reset for next second
 					break;
-		} // switch
-		//------------------------------------------
-		// Rotate the SECONDS digits (wheel-effect)
-		//------------------------------------------
-		x = (uint8_t)((bitstream & 0x00FF0000) >> 16); // isolate seconds digits
-		switch (wheel_effect)
-		{
-			case 0: // no wheel-effect
-				wheel_cnt_sec = 0;
-				break;
-			case 1: // wheel-effect from 59 -> 0
-				if (x == 0)
-				{	// seconds == 0, wheel-effect
-					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
-					if (++wheel_cnt_sec > WH_MAX-1) wheel_cnt_sec = WH_MAX-1;
-				} // if
-				else wheel_cnt_sec = 0; // reset for next second
-				break;
-			case 2: // wheel-effect on every change in seconds
-				if (x != bits_sec_old)
-				{	// change in seconds
-					bitstream &= 0xFF00FFFF; // clear seconds bits
-					bitstream |= (((uint32_t)wheel[wheel_cnt_sec]) << 16);
-					if (++wheel_cnt_sec > WH_MAX-1)
-					{
-						wheel_cnt_sec = WH_MAX-1;
-						bits_sec_old = x;
-					} // if
-				} // if
-				else wheel_cnt_sec = 0; // reset for next second
-			break;
 		} // switch
 	} // if	
 	
@@ -558,7 +564,6 @@ void display_task(void)
 	switch (p.sec)
 	{ 
 		case 15: // display date & month
-		case 16:
 			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
@@ -573,8 +578,7 @@ void display_task(void)
 			} // if			
 			break;
 		
-		case 17: // display year
-		case 18:
+		case 16: // display year
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 			nixie_bits = encode_to_bcd(p.year / 100);
 			nixie_bits <<= 8;
@@ -718,37 +722,6 @@ void display_task(void)
 } // display_task()
 
 /*------------------------------------------------------------------------
-Purpose  : Anti Nixie poisoning routine
-Variables: -
-Returns  : -
-------------------------------------------------------------------------*/
-//void Anti_Nixie_Poisoning(void)
-//{
-	//
-	//uint8_t i = 0;
-	//Time p;
-	//
-	//ds3231_gettime(&p);
-	//
-	//// Anti Nixie poisoning routine
-	//// To avoid that Nixie numbers which are inactive are poisoned and light up darker or not anymore
-	////if	(!((blanking_active(p) || (nixie_lifetimesaver == true)) && (display_60sec == false) && (override_lifetimesaver == false))) // To avoid anti poisoning during LST
-	////{
-		//if (((p.min == 43) || (p.min == 15) ||  (p.min == 30) || (p.min == 45)) && (p.sec == 0))
-		//{
-			//while(i < 10)
-			//{
-				//ftest_nixies();
-				//++i;
-			//}
-			//i = 0;
-		//}
-	////}
-//
-//} // End Anti_Nixie_Poisoning
-
-
-/*------------------------------------------------------------------------
 Purpose  : Set the correct time in the DS3231 module via IRremote
 Variables: -
 Returns  : -
@@ -807,7 +780,6 @@ void set_nixie_timedate(uint8_t x, uint8_t y, char z)
 			break;
 	} //switch
 
-	//nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
 	nixie_bits8 = 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
 	
 	if (z == 'T')
