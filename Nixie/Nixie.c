@@ -265,7 +265,6 @@ void update_nixies(void)
 	static uint8_t  wheel_cntr = 0;
 	static uint8_t  bits_min_old, bits_sec_old, bits_hrs_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
-	uint8_t         effect;      // switch (wheel_effect)
 			
 	//bitstream = nixie_bits; // copy original bitstream for PCB < v0.21
 	// Needed for PCB hardware v0.21 and higher
@@ -288,10 +287,7 @@ void update_nixies(void)
 		h = (uint8_t)((nixie_bits & 0x00FF0000) >> 16); // isolate minutes digits
 		m = (uint8_t)((nixie_bits & 0x0000FF00) >>  8); // isolate minutes digits
 		s = (uint8_t)(nixie_bits  & 0x000000FF);        // isolate seconds digits
-		if (m == 0x30)   // BCD-code 30 == 0x30 
-		     effect = 1; // anti-poisoning effect
-		else effect = wheel_effect; // normal wheel-effect
-		switch (effect)
+		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
 					wheel_cntr = 0;
@@ -326,18 +322,18 @@ void update_nixies(void)
 						{	// change in minutes
 							bitstream   &= 0xFFFF00FF; // clear minutes bits
 							bitstream   |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
+							if ((h != bits_hrs_old) || (m == 0x30))
+							{	// change in hours or anti-poisoning effect
+								bitstream   &= 0xFFFFFF00; // clear hours bits
+								bitstream   |= ((uint32_t)wheel[wheel_cntr]); // hours
+								if (wheel_cntr == WH_MAX-1)
+								{
+									bits_hrs_old = h;
+								} // if
+							} // if
 							if (wheel_cntr == WH_MAX-1)
 							{
 								bits_min_old = m;
-							} // if
-						} // if
-						if (h != bits_hrs_old)
-						{	// change in hours
-							bitstream   &= 0xFFFFFF00; // clear hours bits
-							bitstream   |= ((uint32_t)wheel[wheel_cntr]); // hours
-							if (wheel_cntr == WH_MAX-1)
-							{
-								bits_hrs_old = h;
 							} // if
 						} // if
 						if (++wheel_cntr > WH_MAX-1)
