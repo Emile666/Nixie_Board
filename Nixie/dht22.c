@@ -67,14 +67,12 @@ int8_t dht22_read_sensor(void)
     {
         if (--loopCount == 0) return DHTLIB_ERROR_CONNECT;
     } // while
-
     // GET ACKNOWLEDGE or TIMEOUT
     loopCount = DHTLIB_TIMEOUT;
     while (!(PINB & DHT22_PIN))  // T-rel
     {
         if (--loopCount == 0) return DHTLIB_ERROR_ACK_L;
     } // while
-
     loopCount = DHTLIB_TIMEOUT;
     while ((PINB & DHT22_PIN))  // T-reh
     {

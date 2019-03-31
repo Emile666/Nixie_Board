@@ -179,22 +179,23 @@ void check_and_set_summertime(Time p)
   ------------------------------------------------------------------------*/
 void dht22_task(void)
 {
-	
-	dht22_read(&dht22_hum,&dht22_temp); // read DHT22 sensor
-	dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
-#ifdef DEBUG_SENSORS
 	int8_t x;
-	char s[30];
-	x = dht22_hum / 10;
-	sprintf(s,"dht22: RH=%d.%d %%, ",x,dht22_hum-10*x); 
-	xputs(s);
-	x = dht22_temp / 10;
-	sprintf(s," T=%d.%d °C,",x,dht22_temp-10*x);
-	xputs(s);
-	x = dht22_dewp / 10;
-	sprintf(s," dewpoint=%d.%d °C\n",x,dht22_dewp-10*x);
-	xputs(s);
+	// read DHT22 sensor
+	x = dht22_read(&dht22_hum,&dht22_temp);
+	if (x == DHTLIB_OK) 
+	{
+		dht22_dewp = dht22_dewpoint(dht22_hum,dht22_temp);
+#ifdef DEBUG_SENSORS
+		char s[30];
+		sprintf(s,"dht22: RH=%d E-1 %%, ",dht22_hum); 
+		xputs(s);
+		sprintf(s," T=%d E-1 °C,",dht22_temp);
+		xputs(s);
+		sprintf(s," dewpoint=%d E-1 °C\n",dht22_dewp);
+		xputs(s);
 #endif
+	}
+	else xputs("dht22 checksum error\n");	
 } // dht22_task()
 
 /*------------------------------------------------------------------------
@@ -488,7 +489,7 @@ void display_task(void)
 			clear_nixie(6);
 			rgb_colour = col_temp;
 			break;
-		case 40: // display humidity
+/*		case 40: // display humidity
 			x = dht22_hum / 10;
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
@@ -511,7 +512,7 @@ void display_task(void)
 			clear_nixie(6);
 			rgb_colour = col_dewp;
 			break;
-		case 50: // display Pressure in mbar
+*/		case 50: // display Pressure in mbar
 			x = (uint8_t)(bmp180_pressure / 100.0);
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
