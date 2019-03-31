@@ -196,7 +196,7 @@ uint8_t execute_single_command(char *s)
 								blank_begin_h = h;
 								blank_begin_m = m;
 								write_eeprom_parameters(); 
-								sprintf(s2,"Time: %02d:%02d\n",h,m);
+								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,m);
 								xputs(s2);
 							 } // if
 							 break;
@@ -210,7 +210,7 @@ uint8_t execute_single_command(char *s)
 								 blank_end_h = h;
 								 blank_end_m = m;
 								 write_eeprom_parameters();
-								 sprintf(s2,"Time: %02d:%02d\n",h,m);
+								 sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,m);
 								 xputs(s2);
 							 } // if
 							 break;
@@ -228,12 +228,18 @@ uint8_t execute_single_command(char *s)
 					 xputs("EEPROM reset\n");
 				 } // else					
 				 break;
+
+	   case 'l': // Set RGB LED [0..7]
+                 if (num > 7)
+						rval = ERR_NUM;
+				 else rgb_colour = num;
+				 break;
 				 
 	   case 's': // System commands
 				 switch (num)
 				 {
 					 case 0: // revision
-							 xputs("Nixie board v0.1\n");
+							 xputs("Nixie board v0.2\n");
 							 break;
 					 case 1: // List all I2C devices
 					         i2c_scan();

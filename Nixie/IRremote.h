@@ -156,12 +156,14 @@ typedef struct _decode_results
 
 #define IR_CHARS         "0123456789ULRDOAHX?"
 
-#define NO_CMD    (0)
-#define CMD_MODE  (1)
-#define CMD_TIME  (2)
-#define TIME_EXEC (3)
-#define CMD_DATE  (4)
-#define DATE_EXEC (5)
+#define NO_CMD			(0)
+#define CMD_MODE_ASTRIX	(1)
+#define CMD_MODE_HASH   (2)
+#define CMD_TIME		(3)
+#define TIME_EXEC		(4)
+#define CMD_DATE		(5)
+#define DATE_EXEC		(6)
+
 
 //------------------------------------------------------------------------------
 // Main routines for receiving IR

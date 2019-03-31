@@ -202,7 +202,6 @@ void i2c_scan(void)
 	char    s[50]; // needed for printing to serial terminal
 	uint8_t x = 0;
 	int     i;     // Leave this as an int!
-	const uint8_t none[] = "none";
 	
 	xputs("I2C-scan: ");
 	for (i = 0x02; i < 0xff; i+=2)
@@ -217,7 +216,7 @@ void i2c_scan(void)
 	} // for
 	if (!x) 
 	{
-	  	xputs(none);
+	  	xputs("none");
 	} // else	
   	xputs("\n");
 } // i2c_scan()

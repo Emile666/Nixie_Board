@@ -25,6 +25,9 @@
 // Revision 1.1.1.1  2016/05/07 08:50:25  Emile
 // - Initial version for 1st time check-in to CVS.
 //
+// Revision 1.2.0.0. 2016/07/09 21:39:30  Ronald
+// - Added and modified several functions
+//
 //******************************************************************************
 #include <avr/interrupt.h>
 #include <stdio.h>
@@ -32,7 +35,25 @@
 #include <util/atomic.h>
 #include "IRremote.h"
 #include "usart.h"
+#include "i2c.h"
 #include "Nixie.h"
+#include "eep.h"
+#include "scheduler.h"
+
+
+bool time_only = false;					// Shows only time on the Nixies. time_only=false -> date and sensors are displayed
+bool default_rgb_pattern = true;		// Sets the RGB colour to a default pattern
+bool random_rgb_pattern = false;		// Changes when true the RGB led per second in a random pattern from colour
+bool fixed_rgb_pattern = false;			// Changes when true the RGB led per second in a fixed pattern from colour
+bool display_60sec = false;				// Display time, date and sensor output for 60 sec. during Nixie life time saver period
+bool toggle_nixie_lifetimesaver = false;// Used to set nixie_lifetimesaver back to its original state before override_lifetiemsaver came active
+
+uint8_t fixed_rgb_colour = BLACK;		// RGB colour variable used in Nixie.c
+
+extern uint8_t test_nixies;				// Sets Nixie clock in test mode
+extern bool nixie_lifetimesaver;		// Sets Nixie clock in Life Time Saving mode
+extern bool override_lifetimesaver;		// Override Blanking function
+extern uint8_t wheel_effect;			// Wheel-effect on every second and minute change
 
 // Allow all parts of the code access to the ISR data
 // NB. The data can be changed by the ISR at any time, even mid-function
@@ -273,58 +294,294 @@ void std_cmd(void)
 	static uint8_t inp_arr[6];
 	char           s[20];
 	
+	uint8_t  d,m,h,sec;
+	uint16_t y;
+	
+	
 	switch (cmd_state)
 	{
-		case NO_CMD:   if (ir_remote_key == IR_ASTERISK) 
-					      cmd_state = CMD_MODE;
-					   break;
-		case CMD_MODE: if (ir_remote_key == IR_1)
+		case NO_CMD:	if (ir_remote_key == IR_ASTERISK)
+						{
+							cmd_state = CMD_MODE_ASTRIX;
+						}
+						else if (ir_remote_key == IR_HASH)
+						{
+							cmd_state = CMD_MODE_HASH;
+						}
+												
+						else if (ir_remote_key <= IR_7)		// RGB colour
+						{
+							//idx = 0;
+							default_rgb_pattern = false;
+							random_rgb_pattern = false;
+							fixed_rgb_pattern = false;
+							
+							fixed_rgb_colour = ir_remote_key;
+
+						}						
+						else if (ir_remote_key == IR_8)		// Change per second the RGB colour in a fixed pattern
+						{
+							//idx  = 0;
+							default_rgb_pattern = false;
+							
+							if (fixed_rgb_pattern == false)
+							{
+								random_rgb_pattern = false;
+								fixed_rgb_pattern = true;
+							}
+							else
+							{
+								default_rgb_pattern = true;
+								fixed_rgb_pattern = false;
+							}
+						}
+						else if (ir_remote_key == IR_9)		// Change per second the RGB colour in a random pattern 
+						{
+							//idx  = 0;
+							fixed_rgb_pattern = false;
+							
+							if (random_rgb_pattern == false)
+							{
+								default_rgb_pattern = false;
+								random_rgb_pattern = true;
+							}
+							else
+							{
+								default_rgb_pattern = true;
+								random_rgb_pattern = false;
+							}
+						}
+						break;
+					   
+		case CMD_MODE_HASH: if (ir_remote_key == IR_1)			// #1 - Set time via Nixie tubes
+							{
+								idx = 0;
+																								
+								disable_task("Display");
+								
+								wheel_effect = 0;
+								
+								set_nixie_timedate(0, 6, 'T');
+								
+								cmd_state = CMD_TIME;
+						
+							}
+							else if (ir_remote_key == IR_2)		// #2 - Set date via Nixie tubes
+							{
+								idx = 0;
+														
+								disable_task("Display");
+								
+								wheel_effect = 0;
+								
+								set_nixie_timedate(0, 6, 'D');
+																
+								cmd_state = CMD_DATE;
+								
+							}
+							else if (ir_remote_key == IR_3)		 // #3 - Set Nixie in Life Time Save mode (LST)
+							{
+								//idx  = 0;
+								if (nixie_lifetimesaver == false)
+								{
+									nixie_lifetimesaver = true;				// Nixies are off
+									override_lifetimesaver = false;			// Makes it possible to override with IR #4
+									toggle_nixie_lifetimesaver = false;		
+								}
+								else
+								{
+									if (override_lifetimesaver == false)	// check to make sure #$ is not active		
+									{
+										nixie_lifetimesaver = false;		// Nixies are on	
+									}
+								}
+								cmd_state = NO_CMD;
+							}
+
+							else if (ir_remote_key == IR_4)		// #4 - Override Blanking / LST
+							{
+								idx = 0;
+								if (override_lifetimesaver == false)
+								{
+									override_lifetimesaver = true;	// Override Blanking / LST
+									if (nixie_lifetimesaver == true)
+									{
+										toggle_nixie_lifetimesaver = true;
+									}
+									nixie_lifetimesaver = false;
+								}
+								else
+								{
+									if (toggle_nixie_lifetimesaver == true)
+									{
+										nixie_lifetimesaver = true;
+										toggle_nixie_lifetimesaver = false; 
+									}
+									override_lifetimesaver = false;
+								}
+								cmd_state = NO_CMD;
+							}
+
+							else if (ir_remote_key == IR_9)		// #9 - Test Nixie tubes mode
+							{
+								//idx  = 0;
+								if (test_nixies == true)
+								{
+									test_nixies = false;
+								}
+								else
+								{
+									test_nixies = true;		//Run 0 to 9 test once
+								}
+								cmd_state = NO_CMD;
+							}
+							break;		
+		
+		case CMD_MODE_ASTRIX: if (ir_remote_key == IR_0)			// *0 - Display only time
+							  {
+								 idx = 0;
+								 if (time_only == false)
+								 {
+									 time_only = true;
+								 }
+								 else
+								 {
+									 time_only = false;
+								 }
+								 cmd_state = NO_CMD;
+							  }
+
+							  else if (ir_remote_key == IR_1)		// *1 - Show time, date and sensors for 60 seconds during nixie_lts
+							  {
+								 idx = 0;
+								 if (display_60sec == false)
+								 {
+									display_60sec = true;
+								 }
+									cmd_state = NO_CMD;
+							  }
+
+							  else if ((ir_remote_key >= IR_7) || (ir_remote_key <= IR_9))	// *7 to *9 wheel effect		
+							  {
+								 idx = 0;
+								  
+								 switch (ir_remote_key)
+								 {
+									case 7: wheel_effect = 1;			// Wheel-effect from second change 59 -> 0 
+									break;
+									case 8: wheel_effect = 2;			// wheel-effect every second and change in minutes
+									break;
+									case 9: wheel_effect = 0;			// No Wheel-effect
+								  }
+								  eeprom_write_byte(EEPARB_WHEEL,wheel_effect);
+							  }
+							  cmd_state = NO_CMD;
+							  break;
+							 
+		case CMD_TIME: if ((ir_remote_key <= IR_9) || (ir_remote_key == IR_HASH))	// Set time command
 					   {
-						   xputs("Enter Time (hhmmss):");
-						   idx  = 0;
-						   cmd_state = CMD_TIME;
-					   }			
-					   else if (ir_remote_key == IR_2)
-					   {
-						   xputs("Enter Date (ddmmyy:");
-						   idx  = 0;
-						   cmd_state = CMD_DATE;
-					   }		   
-					   else if (ir_remote_key == IR_HASH)
-					      cmd_state = NO_CMD;
-					   break;
-		case CMD_TIME: if (ir_remote_key <= IR_9)
-					   {
+						   if (ir_remote_key == IR_HASH)		// Break Set time command
+						   {
+							   cmd_state = NO_CMD;
+							   wheel_effect  = eeprom_read_byte(EEPARB_WHEEL);
+							   enable_task("Display");
+							   break; 
+						   }
+						   						   
+						   if ((idx == 0) && (ir_remote_key > IR_2))					// H1: 0..2
+						   {
+							   break;
+						   }
+						   if (((idx == 2) || (idx == 4)) && (ir_remote_key > IR_5))	// M1, S1: 0..5, Minute and Second cannot be greater 59 
+						   {
+							   break;									
+						   }
+				   
 						   inp_arr[idx] = ir_remote_key;
 						   sprintf(s,"%d",ir_remote_key);
 						   xputs(s);
-						   if (++idx > 5) cmd_state = TIME_EXEC;
+						   
+						   set_nixie_timedate(inp_arr[idx], idx, 'T');
+					
+						   if (++idx > 5) cmd_state = TIME_EXEC;			   
 					   } // if
 					   break;
-		case TIME_EXEC: if (ir_remote_key == IR_HASH)
+					   
+		case TIME_EXEC: if (ir_remote_key == IR_OK)					// Load new time in DS3231 
 						{
 							xputs("Set-Time EXEC:");
 							sprintf(s,"%d%d:%d%d:%d%d\n",inp_arr[0],inp_arr[1],inp_arr[2],
 							                             inp_arr[3],inp_arr[4],inp_arr[5]);
 							xputs(s);
+							
+							h = 10*inp_arr[0] + inp_arr[1];		
+							m = 10*inp_arr[2] + inp_arr[3];		
+							sec = 10*inp_arr[4] + inp_arr[5];	
+							
+							ds3231_settime(h,m,sec);
+							
 							cmd_state = NO_CMD;
+							
+							wheel_effect  = eeprom_read_byte(EEPARB_WHEEL);
+							
+							enable_task("Display");
+														
 						} // if
 						break;
-		case CMD_DATE:  if (ir_remote_key <= IR_9)
+						
+		case CMD_DATE:  if ((ir_remote_key <= IR_9) || (ir_remote_key == IR_HASH))		// Set date command
 						{
+						   if (ir_remote_key == IR_HASH)		// Break Set date command
+						   {
+							   cmd_state = NO_CMD;
+							   wheel_effect  = eeprom_read_byte(EEPARB_WHEEL);
+							   enable_task("Display");
+							   break;
+						   }
+
+						   if ((idx == 0) && (ir_remote_key > IR_3))	// D1: 0..3
+						   {
+							   break;
+						   }
+						   if ((idx == 1) && (inp_arr[0] == 3) && (ir_remote_key > IR_1)) // Day cannot be greater than 31
+						   {
+							   break;
+						   }
+						   if ((idx == 2) && (ir_remote_key > IR_1))	// M1: 0..1
+						   {
+							   break;
+						   }
+
 							inp_arr[idx] = ir_remote_key;
 							sprintf(s,"%d",ir_remote_key);
 							xputs(s);
+							
+							set_nixie_timedate(inp_arr[idx], idx, 'D');
+							
 							if (++idx > 5) cmd_state = DATE_EXEC;
 						} // if
 						break;
-		case DATE_EXEC: if (ir_remote_key == IR_HASH)
+						
+		case DATE_EXEC: if (ir_remote_key == IR_OK)					// Load new date in DS3231 
 						{
 							xputs("Set-Date EXEC:");
 							sprintf(s,"%d%d-%d%d-%d\n",inp_arr[0],inp_arr[1],inp_arr[2],
 														 inp_arr[3],2000+10*inp_arr[4]+inp_arr[5]);
 							xputs(s);
+							
+							d = 10*inp_arr[0] + inp_arr[1];
+							m = 10*inp_arr[2] + inp_arr[3];
+							y = 2000+10*inp_arr[4]+inp_arr[5];
+							
+							ds3231_setdate(d,m,y);
+							
 							cmd_state = NO_CMD;
+							
+							wheel_effect  = eeprom_read_byte(EEPARB_WHEEL);
+							
+							//enable_task("LTS");
+							enable_task("Display");
+							
 						} // if
 						break;
 	} // switch

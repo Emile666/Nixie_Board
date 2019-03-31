@@ -10,6 +10,9 @@
 // Revision 1.1.1.1  2016/05/07 08:50:25  Emile
 // - Initial version for 1st time check-in to CVS.
 //
+// Revision 1.2.0.0  2016/07/09 22:36:30  Ronald
+// - Added and modified several functions 
+//
 //-----------------------------------------------------------------------------
 #include <avr/io.h>
 #include <util/atomic.h>
@@ -23,7 +26,10 @@
 #include "bmp180.h"
 #include "eep.h"
 
-uint8_t       test_nixies = false;   // S3 command
+bool		  test_nixies = 0;					// S3 command / IR #9 command
+bool		  nixie_lifetimesaver = false;		// Toggle nixie's on (false), no LST or off (true), LST active - *3 IR remote
+bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *2 IR remote 	
+uint8_t		  cnt_60sec   = 0;					// 60 seconds counter during nixie_lts - *1 IR remote 	 	
 uint8_t       cnt_50usec  = 0;       // 50 usec. counter
 unsigned long t2_millis   = 0UL;     // msec. counter
 uint16_t      dht22_hum   = 0;       // Humidity E-1 %
@@ -31,11 +37,20 @@ int16_t       dht22_temp  = 0;       // Temperature E-1 Celsius
 int16_t       dht22_dewp  = 0;       // Dewpoint E-1 Celsius
 double        bmp180_pressure = 0.0; // Pressure E-1 mbar
 double        bmp180_temp     = 0.0; // Temperature E-1 Celsius
-bool          dst_active;            // true = Daylight Saving Time active
+
+bool          dst_active      = false;		// true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
+
+extern bool time_only;				// Toggles between time and date only with no RGB to all task shown
+extern bool default_rgb_pattern;	// Set RGB colour to a default pattern
+extern bool random_rgb_pattern;		// Change per second the RGB colour in a random pattern
+extern bool fixed_rgb_pattern;		// Change per second the RGB colour in a fix pattern	
+extern bool display_60sec;			// Display time, date and sensor outputs for 60 sec.
+extern uint8_t fixed_rgb_colour;
+
 uint8_t       wheel_effect    = 0;    // 0: none, 1: from 59->00, 2: every second/minute
 bool          display_time    = true; // true = hh:mm:ss is on display 
 uint8_t		  col_time; // Colour for Time display
@@ -364,7 +379,7 @@ void update_nixies(void)
 		mask >>= 1;     // shift right 1
 		PORTD |=  SHCP; // set clock to 1
 		PORTD &= ~SHCP; // set clock to 0 again
-	} // for x
+	} // for i
 	// Now clock bits from shift-registers to output-registers
 	PORTD |=  STCP; // set clock to 1
 	PORTD &= ~STCP; // set clock to 0 again
@@ -404,25 +419,140 @@ void clear_nixie(uint8_t nr)
 	} // if
 } // clear_nixie()
 
+/*------------------------------------------------------------------------
+Purpose  : Set the correct time in the DS3231 module via IRremote
+Variables: -
+Returns  : -
+------------------------------------------------------------------------*/
+void set_nixie_timedate(uint8_t x, uint8_t y, char z)
+{
+	switch (y)
+	{
+		case 0:
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		clear_nixie(4);
+		clear_nixie(5);
+		
+		
+		break;
+		
+		case 1:
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		clear_nixie(4);
+		
+		break;
+
+		case 2:
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(3);
+		
+		break;
+		
+		case 3:
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		clear_nixie(2);
+		
+		break;
+
+		case 4:
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		clear_nixie(1);
+		
+		break;
+		
+		case 5:
+		nixie_bits <<= 4;
+		nixie_bits |= x;
+		
+		break;
+		
+		case 6:
+		nixie_bits &= 0x00000000;
+		PORTC &=~0x0F;
+		
+		break;
+		
+	} //switch
+
+	nixie_bits &= 0x00FFFFFF; // Clear decimal point bits 31 to 24
+	
+	if (z == 'T')
+	{
+		nixie_bits |=(RIGHT_DP2 | LEFT_DP5);
+		rgb_colour = YELLOW;
+	}
+	else if (z == 'D')
+	{
+		nixie_bits |=(LEFT_DP3 | RIGHT_DP4);
+		rgb_colour = GREEN;
+	}
+} // end set_nixie_timedate
+
+/*------------------------------------------------------------------------
+  Purpose  : To test the Nixie tubes, showing 0 to 9, %, C, P, and RGB Leds 
+  Variables: -
+  Returns  : -
+  ------------------------------------------------------------------------*/
 void ftest_nixies(void)
 {
 	static uint8_t std_test = 0;
 	
+	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 	switch (std_test)
 	{
 		case 0: nixie_bits = 0x01000000; std_test = 1; break;
 		case 1: nixie_bits = 0x02111111; std_test = 2; break;
-		case 2: nixie_bits = 0x40222222; std_test = 3; break;
+		case 2: nixie_bits = 0x40222222; PORTC |= DEGREESYMBOL | LED_IN19A; std_test = 3; break;
 		case 3: nixie_bits = 0x04333333; std_test = 4; break;
 		case 4: nixie_bits = 0x08444444; std_test = 5; break;
-		case 5: nixie_bits = 0x80555555; std_test = 6; break;
+		case 5: nixie_bits = 0x80555555; PORTC |= (HUMIDITYSYMBOL | LED_IN19A); std_test = 6; break;
 		case 6: nixie_bits = 0x10666666; std_test = 7; break;
 		case 7: nixie_bits = 0x20777777; std_test = 8; break;
-		case 8: nixie_bits = 0xFF888888; std_test = 9; break;
+		case 8: nixie_bits = 0xFF888888; PORTC |= (PRESSURESYMBOL | LED_IN19A); std_test = 9; break;
 		case 9: nixie_bits = 0xFF999999; std_test = 0; test_nixies = false; break;
 	} // switch
-	rgb_colour = std_test & 0x07;
+	//rgb_colour = std_test & 0x07;
 } // ftest_nixies()
+
+/*------------------------------------------------------------------------
+  Purpose  : This functions is called when random_rgb == true.
+			 Called every second.
+  Variables: -
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void fixed_random_rgb_colour(uint8_t s, bool rndm)
+{
+	
+	if (rndm == true )
+	{
+		s = rand() % 60;
+	}
+	
+	switch (s % 7)
+	{
+		case  0: rgb_colour = WHITE;   break;
+		case  1: rgb_colour = RED;     break;
+		case  2: rgb_colour = GREEN;   break;
+		case  3: rgb_colour = BLUE;    break;
+		case  4: rgb_colour = YELLOW;  break;
+		case  5: rgb_colour = MAGENTA; break;
+		case  6: rgb_colour = CYAN;    break;
+		default: rgb_colour = BLACK;   break;	
+	} // Switch
+} // fixed_random_rgb_colour
 
 /*------------------------------------------------------------------------
   Purpose  : This function decides if the current time falls between the
@@ -432,8 +562,8 @@ void ftest_nixies(void)
   ------------------------------------------------------------------------*/
 bool blanking_active(Time p)
 {
-	if ( (p.hour >  blank_end_h)   && (p.hour <  blank_begin_h) ||
-	    ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))  ||
+	if (((p.hour >  blank_end_h)   && (p.hour <  blank_begin_h)) ||
+	    ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))   ||
 	    ((p.hour == blank_begin_h) && (p.min  <  blank_begin_m)))
 	     return false;
 	else return true;
@@ -448,17 +578,57 @@ bool blanking_active(Time p)
 void display_task(void)
 {
 	Time    p; // Time struct
-	uint8_t x;
+	uint8_t x, y;
+	uint8_t cnt_60sec = 0;
 	
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
 	display_time = false; // start with no-time on display
-	if (test_nixies) ftest_nixies(); // S3 command
-	else if (blanking_active(p))
-	     nixie_bits = NIXIE_CLEAR_ALL;
-	else switch (p.sec)
+
+	if (time_only == true)			// *0 IR remote
+		 y = 0;
+	else y = p.sec; // End time_only
+	
+	if (random_rgb_pattern == true)
+		fixed_random_rgb_colour(p.sec, true);
+	else if (fixed_rgb_pattern == true)
+		fixed_random_rgb_colour(p.sec, false);
+	else if (default_rgb_pattern == false)
 	{
-		case 25: // display date & month
+		switch (fixed_rgb_colour)
+		{
+			case 0: rgb_colour = BLACK;   break;
+			case 1: rgb_colour = RED;     break;
+			case 2: rgb_colour = GREEN;   break;
+			case 3: rgb_colour = BLUE;    break;
+			case 4: rgb_colour = YELLOW;  break;
+			case 5: rgb_colour = MAGENTA; break;
+			case 6: rgb_colour = CYAN;    break;
+			case 7: rgb_colour = WHITE;   break;
+		} // End Switch
+	} // End random_rgb_pattern
+
+	if (display_60sec == true)		// *1 IR Remote : Display for 60 seconds time, date and sensor outputs during Nixie lifetimesaver period		
+	{
+		if (cnt_60sec == 60)
+		{
+			cnt_60sec = 0;
+			display_60sec = false;
+		}
+		++cnt_60sec;
+	} //End if - display_60sec
+
+	if (test_nixies) ftest_nixies(); // S3 command
+	else if ((blanking_active(p) || nixie_lifetimesaver) && !display_60sec && !override_lifetimesaver)
+	{
+	     nixie_bits = NIXIE_CLEAR_ALL;
+		 PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+		 rgb_colour = BLACK;
+	}
+	else switch (y)
+	{
+		case 15: // display date & month
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
@@ -466,18 +636,27 @@ void display_task(void)
 			nixie_bits <<= 4;
 			clear_nixie(3);
 			clear_nixie(6);
-			rgb_colour = col_date;
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = GREEN;
+			} // if		
 			break;
-		case 26: // display year
+
+		case 16: // display year
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
 			nixie_bits = encode_to_bcd(p.year / 100);
 			nixie_bits <<= 8;
 			nixie_bits |= encode_to_bcd(p.year % 100);
 			nixie_bits <<= 4;
 			clear_nixie(1);
 			clear_nixie(6);
-			rgb_colour = col_date;
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = GREEN;
+			} // if
 			break;
-		case 35: // display temperature
+
+		case 40: // display temperature
 			x = (uint8_t)bmp180_temp;
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
@@ -487,32 +666,15 @@ void display_task(void)
 			clear_nixie(4);
 			clear_nixie(5);
 			clear_nixie(6);
-			rgb_colour = col_temp;
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
+			PORTC |=  DEGREESYMBOL | LED_IN19A;
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = RED;
+			} // if
 			break;
-/*		case 40: // display humidity
-			x = dht22_hum / 10;
-			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 4;
-			nixie_bits |= (dht22_hum - 10 * x);
-			nixie_bits |= RIGHT_DP5;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			rgb_colour = col_humi;
-			break;
-		case 41: // display dew point
-			x = dht22_dewp / 10;
-			nixie_bits = encode_to_bcd(x);
-			nixie_bits <<= 4;
-			nixie_bits |= (dht22_dewp - 10 * x);
-			nixie_bits <<= 4;
-			nixie_bits |= RIGHT_DP4;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(6);
-			rgb_colour = col_dewp;
-			break;
-*/		case 50: // display Pressure in mbar
+
+		case 50: // display Pressure in mbar
 			x = (uint8_t)(bmp180_pressure / 100.0);
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 8;
@@ -523,8 +685,14 @@ void display_task(void)
 			nixie_bits |= (x << 4);
 			nixie_bits |= RIGHT_DP4;
 			clear_nixie(6);
-			rgb_colour = col_pres;
-		break;
+			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
+			PORTC |=  PRESSURESYMBOL | LED_IN19A;
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = CYAN;
+			} // if
+			break;
+
 		default: // display normal time
 		    display_time = true;
 			nixie_bits = encode_to_bcd(p.hour);
@@ -532,8 +700,11 @@ void display_task(void)
 			nixie_bits |= encode_to_bcd(p.min);
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
-			if (p.sec == 0) rgb_colour = col_roll;
-			else            rgb_colour = col_time;
+			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+			if (default_rgb_pattern == true)
+			{
+				rgb_colour = YELLOW;
+			} // if
 			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
 			else              nixie_bits |=  LEFT_DP5;
 			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
@@ -561,7 +732,7 @@ void init_timer2(void)
 } // init_timer2()
 
 /*------------------------------------------------------------------------
-Purpose  : This function initializes PORTB and PORTD pins.
+Purpose  : This function initializes PORTB, PORTC and PORTD pins.
            See Nixie.h header for a detailed overview of all port-pins.
 Variables: -
 Returns  : -
@@ -571,9 +742,13 @@ void init_ports(void)
 	DDRB  &= ~(DHT22 | IR_RCV); // clear bits = input
 	PORTB &= ~(DHT22 | IR_RCV); // disable pull-up resistors
 	DDRB  |=  (TIME_MEAS | RGB_R | RGB_G | RGB_B); // set bits = output
-	PORTB &= ~(TIME_MEAS | RGB_R | RGB_G | RGB_B); // init. outputs to 0
+	PORTB &= ~(TIME_MEAS | RGB_R | RGB_G | RGB_B); // set outputs to 0
+	
+	DDRC  |=  (HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A); // set bits C3..C0 as outputs
+	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A); // set outputs to 0
+	
 	DDRD  |=  (SDIN | SHCP | STCP); // set bits = output
-	PORTD &= ~(SDIN | SHCP | STCP); // init. outputs to 0
+	PORTD &= ~(SDIN | SHCP | STCP); // set outputs to 0
 } // init_ports()
 
 /*------------------------------------------------------------------------
@@ -589,7 +764,9 @@ int main(void)
 	init_timer2(); // init. timer for scheduler and IR-receiver
 	ir_init();     // init. IR-library
 	i2c_init(SCL_CLK_400KHZ); // Init. I2C HW with 400 kHz clock
-	init_ports();  // init. PORTB and PORTD port-pins 	
+	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
+	
+	srand(59);     // Initialize random generator from 0 - 59
 	
 	// Initialize Serial Communication, See usart.h for BAUD
 	// F_CPU should be a Project Define (-DF_CPU=16000000UL)
@@ -601,7 +778,7 @@ int main(void)
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
 	add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
-	add_task(bmp180_task  ,"BMP180" ,350, 1000); // Run BMP180 sensor process every second.
+	add_task(bmp180_task  ,"BMP180" ,350, 5000); // Run BMP180 sensor process every second.
 
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
