@@ -290,7 +290,19 @@ void update_nixies(void)
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
-					wheel_cntr = 0;
+					if ((s == 0x00) && (m == 0x30))
+					{	// Anti-poisoning effect at every half-hour
+						if (wheel_cntr < WH_MAX-1)
+						{
+							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16); // seconds
+							bitstream &= 0xFFFF00FF; // clear minutes bits
+							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8);  // minutes
+							bitstream &= 0xFFFFFF00; // clear hours bits
+							bitstream |= ((uint32_t)wheel[wheel_cntr]);         // hours
+						} // if
+						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
+					} // if
+					else wheel_cntr = 0; // reset for next second
 					break;
 			case 1: // wheel-effect from 59 -> 0 (minutes & seconds) + anti-poisoning effect from 29 -> 30
 					if (s == 0x00)
@@ -508,8 +520,8 @@ void set_rgb_colour(uint8_t color)
 bool blanking_active(Time p)
 {
 	if ( ((p.hour >  blank_end_h)   && (p.hour <  blank_begin_h)) ||
-	    ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))  ||
-	    ((p.hour == blank_begin_h) && (p.min  <  blank_begin_m)))
+	     ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))   ||
+	     ((p.hour == blank_begin_h) && (p.min  <  blank_begin_m)))
 	     return false;
 	else return true;
 } // blanking_active()
