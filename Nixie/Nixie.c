@@ -282,7 +282,7 @@ void update_nixies(void)
 		//--------------------------------------------------------
 		// WHEEL-EFFECT: Rotate digits + ANTI-POISONING Function
 		//--------------------------------------------------------
-		h = (uint8_t)((nixie_bits & 0x00FF0000) >> 16); // isolate minutes digits
+		h = (uint8_t)((nixie_bits & 0x00FF0000) >> 16); // isolate hours   digits
 		m = (uint8_t)((nixie_bits & 0x0000FF00) >>  8); // isolate minutes digits
 		s = (uint8_t)(nixie_bits  & 0x000000FF);        // isolate seconds digits
 		switch (wheel_effect)
@@ -292,10 +292,10 @@ void update_nixies(void)
 					{	// Anti-poisoning effect at every half- and full-hour
 						if (wheel_cntr < WH_MAX-1)
 						{
-							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16); // seconds
-							bitstream &= 0xFFFF0000; // clear minutes and hours bits
+							bitstream |= ((uint32_t)wheel[wheel_cntr]);         // seconds
+							bitstream &= 0xFF0000FF; // clear minutes and hours bits
 							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8);  // minutes
-							bitstream |= ((uint32_t)wheel[wheel_cntr]);         // hours
+							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16); // hours
 						} // if
 						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
 					} // if
@@ -304,14 +304,14 @@ void update_nixies(void)
 			case 1: // wheel-effect only from 59 -> 0 (minutes & seconds) + anti-poisoning effect
 					if (s == 0x00)
 					{	// seconds == 0, wheel-effect
-						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						bitstream |= ((uint32_t)wheel[wheel_cntr]); // seconds
 						if ((m == 0x00) || (m == 0x30))
 						{	// // Anti-poisoning effect at every half- and full-hour
 							if (wheel_cntr < WH_MAX-1)
 							{
-								bitstream &= 0xFFFF0000; // clear minutes and hours bits
-								bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
-								bitstream |= ((uint32_t)wheel[wheel_cntr]);        // hours
+								bitstream &= 0xFF0000FF; // clear minutes and hours bits
+								bitstream |= (((uint32_t)wheel[wheel_cntr]) <<  8); // minutes
+								bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16); // hours
 							} // if							
 						} // if
 						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
@@ -321,16 +321,16 @@ void update_nixies(void)
 			case 2: // wheel-effect on every change in hours / minutes / seconds
 					if (s != bits_sec_old)
 					{	// change in seconds
-						bitstream &= 0xFF00FFFF; // clear seconds bits
-						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						bitstream &= 0xFFFFFF00; // clear seconds bits
+						bitstream |= ((uint32_t)wheel[wheel_cntr]); // seconds
 						if (m != bits_min_old)
 						{	// change in minutes
 							bitstream   &= 0xFFFF00FF; // clear minutes bits
 							bitstream   |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
 							if ((h != bits_hrs_old) || (m == 0x30))
 							{	// change in hours or anti-poisoning effect
-								bitstream   &= 0xFFFFFF00; // clear hours bits
-								bitstream   |= ((uint32_t)wheel[wheel_cntr]); // hours
+								bitstream   &= 0xFF00FFFF; // clear hours bits
+								bitstream   |= (((uint32_t)wheel[wheel_cntr]) << 16); // hours
 								if (wheel_cntr == WH_MAX-1)
 								{
 									bits_hrs_old = h;
