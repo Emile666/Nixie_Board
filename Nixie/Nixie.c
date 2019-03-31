@@ -266,11 +266,11 @@ void bmp180_task(void)
   ------------------------------------------------------------------------*/
 void update_nixies(void)
 {
-	uint8_t         i, x;
+	uint8_t         i, h, m, s;
 	uint32_t        mask = 0x80000000; // start with MSB
 	uint32_t        bitstream;         // copy of nixie_bits
-	static uint8_t  wheel_cnt_sec = 0, wheel_cnt_min = 0;
-	static uint8_t  bits_min_old, bits_sec_old;
+	static uint8_t  wheel_cntr = 0;
+	static uint8_t  bits_min_old, bits_sec_old, bits_hrs_old;
 	uint8_t         wheel[WH_MAX] = {11,22,33,44,55,66,77,88,99,0};
 			
 	PORTB &= ~(RGB_R | RGB_G | RGB_B);               // clear  LED colours
@@ -279,67 +279,76 @@ void update_nixies(void)
 	bitstream = nixie_bits; // copy original bitstream
 	if (display_time)
 	{
-		//------------------------------------------
-		// Rotate the MINUTES digits (wheel-effect)
-		//------------------------------------------
-		x = (uint8_t)((nixie_bits & 0x0000FF00) >> 8); // isolate minutes digits
+		//--------------------------------------------------------
+		// WHEEL-EFFECT: Rotate digits + ANTI-POISONING Function
+		//--------------------------------------------------------
+		h = (uint8_t)((nixie_bits & 0x00FF0000) >> 16); // isolate minutes digits
+		m = (uint8_t)((nixie_bits & 0x0000FF00) >>  8); // isolate minutes digits
+		s = (uint8_t)(nixie_bits  & 0x000000FF);        // isolate seconds digits
 		switch (wheel_effect)
 		{
 			case 0: // no wheel-effect
-					wheel_cnt_min = 0;
-					break;
-			case 1: // wheel-effect from 59 -> 0
-					if (x == 0)
-					{	// minutes == 0, wheel-effect
-						bitstream |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
-						if (++wheel_cnt_min > WH_MAX-1) wheel_cnt_min = WH_MAX-1;
-					} // if
-					else wheel_cnt_min = 0; // reset for next minute
-					break;
-			case 2: // wheel-effect on every change in minutes
-					if (x != bits_min_old)
-					{	// change in minutes
-						bitstream   &= 0xFFFF00FF; // clear minutes bits
-						bitstream   |= (((uint32_t)wheel[wheel_cnt_min]) << 8);
-						if (++wheel_cnt_min > WH_MAX-1)
+					if ((s == 0x00) && ((m == 0x00) || (m == 0x30)))
+					{	// Anti-poisoning effect at every half- and full-hour
+						if (wheel_cntr < WH_MAX-1)
 						{
-							wheel_cnt_min = WH_MAX-1;
-							bits_min_old = x;
+							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16); // seconds
+							bitstream &= 0xFFFF0000; // clear minutes and hours bits
+							bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8);  // minutes
+							bitstream |= ((uint32_t)wheel[wheel_cntr]);         // hours
+						} // if
+						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
+					} // if
+					else wheel_cntr = 0; // reset for next second
+					break;
+			case 1: // wheel-effect only from 59 -> 0 (minutes & seconds) + anti-poisoning effect
+					if (s == 0x00)
+					{	// seconds == 0, wheel-effect
+						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						if ((m == 0x00) || (m == 0x30))
+						{	// // Anti-poisoning effect at every half- and full-hour
+							if (wheel_cntr < WH_MAX-1)
+							{
+								bitstream &= 0xFFFF0000; // clear minutes and hours bits
+								bitstream |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
+								bitstream |= ((uint32_t)wheel[wheel_cntr]);        // hours
+							} // if							
+						} // if
+						if (++wheel_cntr > WH_MAX-1) wheel_cntr = WH_MAX-1;
+					} // if
+					else wheel_cntr = 0; // reset for next second
+					break;
+			case 2: // wheel-effect on every change in hours / minutes / seconds
+					if (s != bits_sec_old)
+					{	// change in seconds
+						bitstream &= 0xFF00FFFF; // clear seconds bits
+						bitstream |= (((uint32_t)wheel[wheel_cntr]) << 16);
+						if (m != bits_min_old)
+						{	// change in minutes
+							bitstream   &= 0xFFFF00FF; // clear minutes bits
+							bitstream   |= (((uint32_t)wheel[wheel_cntr]) << 8); // minutes
+							if ((h != bits_hrs_old) || (m == 0x30))
+							{	// change in hours or anti-poisoning effect
+								bitstream   &= 0xFFFFFF00; // clear hours bits
+								bitstream   |= ((uint32_t)wheel[wheel_cntr]); // hours
+								if (wheel_cntr == WH_MAX-1)
+								{
+									bits_hrs_old = h;
+								} // if
+							} // if
+							if (wheel_cntr == WH_MAX-1)
+							{
+								bits_min_old = m;
+							} // if
+						} // if
+						if (++wheel_cntr > WH_MAX-1)
+						{
+							wheel_cntr   = WH_MAX-1;
+							bits_sec_old = s;
 						} // if
 					} // if
-					else wheel_cnt_min = 0; // reset for next minute
+					else wheel_cntr = 0; // reset for next second
 					break;
-		} // switch
-		//------------------------------------------
-		// Rotate the SECONDS digits (wheel-effect)
-		//------------------------------------------
-		x = (uint8_t)(bitstream & 0x000000FF); // isolate seconds digits
-		switch (wheel_effect)
-		{
-			case 0: // no wheel-effect
-				wheel_cnt_sec = 0;
-				break;
-			case 1: // wheel-effect from 59 -> 0
-				if (x == 0)
-				{	// seconds == 0, wheel-effect
-					bitstream |= wheel[wheel_cnt_sec];
-					if (++wheel_cnt_sec > WH_MAX-1) wheel_cnt_sec = WH_MAX-1;
-				} // if
-				else wheel_cnt_sec = 0; // reset for next second
-				break;
-			case 2: // wheel-effect on every change in seconds
-				if (x != bits_sec_old)
-				{	// change in seconds
-					bitstream   &= 0xFFFFFF00; // clear seconds bits
-					bitstream   |= wheel[wheel_cnt_sec];
-					if (++wheel_cnt_sec > WH_MAX-1)
-					{
-						wheel_cnt_sec = WH_MAX-1;
-						bits_sec_old = x;
-					} // if
-				} // if
-				else wheel_cnt_sec = 0; // reset for next second
-				break;
 		} // switch
 	} // if	
 	//------------------------------------------
