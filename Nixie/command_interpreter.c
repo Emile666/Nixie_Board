@@ -247,6 +247,17 @@ uint8_t execute_single_command(char *s)
 				 else rgb_pattern = num;
 				 break;
 				 
+	   case 'p': // P0: clear decimal point, P1: set decimal point
+				if (num > 1)
+					rval = ERR_NUM;
+				else 
+				{
+					val = atoi(&s[3]); // convert number until EOL
+					if (num) dec_point_set(val);
+					else     dec_point_clr(val);
+				} // else				
+				break;
+
 	   case 's': // System commands
 				 switch (num)
 				 {

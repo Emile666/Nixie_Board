@@ -430,24 +430,45 @@ void ftest_nixies(void)
 	static uint8_t std_test = 0;
 	
 	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+	nixie_bits8 = 0x00;
 	
 	switch (std_test)
 	{
-		case 0: nixie_bits = 0x01000000; std_test = 1; break;
-		case 1: nixie_bits = 0x02111111; std_test = 2; break;
-		case 2: nixie_bits = 0x40222222; 
+		case 0: nixie_bits = 0x00000000; 
+		        dec_point_set(DP_HH_LEFT);
+				dec_point_set(DP_HH_RIGHT);
+				std_test = 1; 
+				break;
+		case 1: nixie_bits = 0x00111111; 
+		        dec_point_set(DP_HL_LEFT);
+		        dec_point_set(DP_HL_RIGHT);
+				std_test = 2; 
+				break;
+		case 2: nixie_bits = 0x00222222; 
+		        dec_point_set(DP_MH_LEFT);
+		        dec_point_set(DP_MH_RIGHT);
 		        PORTC   |= (DEGREESYMBOL | LED_IN19A); 
 				std_test = 3; 
 				break;
-		case 3: nixie_bits = 0x04333333; std_test = 4; break;
-		case 4: nixie_bits = 0x08444444; std_test = 5; break;
-		case 5: nixie_bits = 0x80555555; 
+		case 3: nixie_bits = 0x00333333; 
+		        dec_point_set(DP_ML_LEFT);
+		        dec_point_set(DP_ML_RIGHT);
+				std_test = 4; 
+				break;
+		case 4: nixie_bits = 0x00444444; 
+				dec_point_set(DP_SH_LEFT);
+				dec_point_set(DP_SH_RIGHT);
+				std_test = 5; 
+				break;
+		case 5: nixie_bits = 0x00555555; 
 		        PORTC   |= (HUMIDITYSYMBOL | LED_IN19A); 
+		        dec_point_set(DP_SL_LEFT);
+		        dec_point_set(DP_SL_RIGHT);
 				std_test = 6; 
 				break;
-		case 6: nixie_bits = 0x10666666; std_test = 7; break;
-		case 7: nixie_bits = 0x20777777; std_test = 8; break;
-		case 8: nixie_bits = 0xFF888888; 
+		case 6: nixie_bits = 0x00666666; std_test = 7; break;
+		case 7: nixie_bits = 0x00777777; std_test = 8; break;
+		case 8: nixie_bits = 0x00888888; 
 		        PORTC   |= (PRESSURESYMBOL | LED_IN19A); 
 				std_test = 9; 
 				break;
@@ -520,6 +541,106 @@ bool blanking_active(Time p)
 	     return false;
 	else return true;
 } // blanking_active()
+
+/*------------------------------------------------------------------------
+  Purpose  : This function sets one decimal point of the six Nixies. Every
+             Nixie can have a left and a right decimal-point. This function
+			 uses the global variables nixie_bits (32 bit) and nixie_bits8 (8 bit).
+  Variables: dp: a decimal-point constant indicating which one to set.
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void dec_point_set(uint8_t dp)
+{
+	switch (dp)
+	{
+		case DP_HH_LEFT:  // Nixie 1, most-left one
+			nixie_bits8 |= LEFT_DP1;
+			break;
+		case DP_HH_RIGHT: // Nixie 1, most-left one
+			nixie_bits  |= RIGHT_DP1;
+			break;
+		case DP_HL_LEFT:  // Nixie 2
+			nixie_bits8 |= LEFT_DP2;
+			break;
+		case DP_HL_RIGHT: // Nixie 2
+			nixie_bits  |= RIGHT_DP2;
+			break;
+		case DP_MH_LEFT:  // Nixie 3
+			nixie_bits8 |= LEFT_DP3;
+			break;
+		case DP_MH_RIGHT: // Nixie 3
+			nixie_bits  |= RIGHT_DP3;
+			break;
+		case DP_ML_LEFT:  // Nixie 4
+			nixie_bits8 |= LEFT_DP4;
+			break;
+		case DP_ML_RIGHT: // Nixie 4
+			nixie_bits  |= RIGHT_DP4;
+			break;
+		case DP_SH_LEFT:  // Nixie 5
+			nixie_bits  |= LEFT_DP5;
+			break;
+		case DP_SH_RIGHT: // Nixie 5
+			nixie_bits  |= RIGHT_DP5;
+			break;
+		case DP_SL_LEFT:  // Nixie 6, most-right one
+			nixie_bits  |= LEFT_DP6;
+			break;
+		case DP_SL_RIGHT: // Nixie 6, most-right one
+			nixie_bits  |= RIGHT_DP6;
+			break;
+	} // switch
+} // dec_point_set()
+
+/*------------------------------------------------------------------------
+  Purpose  : This function sets one decimal point of the six Nixies. Every
+             Nixie can have a left and a right decimal-point. This function
+			 uses the global variables nixie_bits (32 bit) and nixie_bits8 (8 bit).
+  Variables: dp: a decimal-point constant indicating which one to set.
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void dec_point_clr(uint8_t dp)
+{
+	switch (dp)
+	{
+		case DP_HH_LEFT:  // Nixie 1, most-left one
+			nixie_bits8 &= ~LEFT_DP1;
+			break;
+		case DP_HH_RIGHT: // Nixie 1, most-left one
+			nixie_bits  &= ~RIGHT_DP1;
+			break;
+		case DP_HL_LEFT:  // Nixie 2
+			nixie_bits8 &= ~LEFT_DP2;
+			break;
+		case DP_HL_RIGHT: // Nixie 2
+			nixie_bits  &= ~RIGHT_DP2;
+			break;
+		case DP_MH_LEFT:  // Nixie 3
+			nixie_bits8 &= ~LEFT_DP3;
+			break;
+		case DP_MH_RIGHT: // Nixie 3
+			nixie_bits  &= ~RIGHT_DP3;
+			break;
+		case DP_ML_LEFT:  // Nixie 4
+			nixie_bits8 &= ~LEFT_DP4;
+			break;
+		case DP_ML_RIGHT: // Nixie 4
+			nixie_bits  &= ~RIGHT_DP4;
+			break;
+		case DP_SH_LEFT:  // Nixie 5
+			nixie_bits  &= ~LEFT_DP5;
+			break;
+		case DP_SH_RIGHT: // Nixie 5
+			nixie_bits  &= ~RIGHT_DP5;
+			break;
+		case DP_SL_LEFT:  // Nixie 6, most-right one
+			nixie_bits  &= ~LEFT_DP6;
+			break;
+		case DP_SL_RIGHT: // Nixie 6, most-right one
+			nixie_bits  &= ~RIGHT_DP6;
+			break;
+	} // switch
+} // dec_point_clr()
 
 /*------------------------------------------------------------------------
   Purpose  : This task decide what to display on the Nixie Tubes.
@@ -605,7 +726,7 @@ void display_task(void)
 			r = (uint16_t)(r - 1000 * x); // 383
 			y = (uint8_t)(r / 100);       // 3
 			nixie_bits |= y;
-			nixie_bits |= LEFT_DP6;
+			dec_point_set(DP_SL_LEFT); // set decimal point
 			
 			PORTC &= ~(DEGREESYMBOL | PRESSURESYMBOL);
 			PORTC |= HUMIDITYSYMBOL;
@@ -654,7 +775,7 @@ void display_task(void)
 			r = (uint16_t)(r - 100 * x); // 01
 			y = (uint8_t)(r / 10);       // 0
 			nixie_bits |= y;
-			nixie_bits |= LEFT_DP6;
+			dec_point_set(DP_SL_LEFT); // set decimal point
 			
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |= DEGREESYMBOL;
@@ -685,7 +806,7 @@ void display_task(void)
 			nixie_bits <<= 4;
 			r -= 10 * y;                             // 7
 			nixie_bits |= (uint8_t)r;
-			nixie_bits |= LEFT_DP6;
+			dec_point_set(DP_SL_LEFT); // set decimal point
 
 			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
 			PORTC |= PRESSURESYMBOL;
@@ -712,13 +833,11 @@ void display_task(void)
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-			// NOTE: LEFT_DP1..LEFT_DP4 are contained in upper 8 bits!
-			if (p.sec & 0x01) nixie_bits  |=  RIGHT_DP4;
-			else              nixie_bits  |=  LEFT_DP5;
-			if (p.min & 0x01) nixie_bits8  =  LEFT_DP3;
-			else              nixie_bits8  =  LEFT_DP3;
-			if (dst_active)   nixie_bits8  |=  LEFT_DP1;
-			else              nixie_bits8  &= ~LEFT_DP1;
+			if (p.sec & 0x01) dec_point_set(DP_SH_LEFT);
+			else              dec_point_set(DP_ML_RIGHT);
+			dec_point_set(DP_MH_LEFT); // set hrs-min. separator
+			if (dst_active)   dec_point_set(DP_SL_RIGHT);
+			else              dec_point_clr(DP_SL_RIGHT);
 			break;
 	} // switch
 	ws2812_send_all(); // Send color-bits to WS2812 leds

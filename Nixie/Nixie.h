@@ -82,7 +82,7 @@
 #define FIXED   (3) /* Color is selected by fixed_rgb_colour */
 
 //-----------------------------------
-// Nixie Decimal Points:
+// Nixie Decimal Point bit-values:
 // 1:HH, 2:HL, 3:MH, 4:ML, 5:SH, 6:SL
 //-----------------------------------
 #define LEFT_DP1  (0x08) /* for nixie_bits8 */
@@ -98,6 +98,23 @@
 #define RIGHT_DP4 (0x04000000) /* for nixie_bits */
 #define RIGHT_DP5 (0x02000000) /* for nixie_bits */
 #define RIGHT_DP6 (0x01000000) /* for nixie_bits */
+
+//-----------------------------------
+// Nixie Decimal Point constant:
+// 1:HH, 2:HL, 3:MH, 4:ML, 5:SH, 6:SL
+//-----------------------------------
+#define DP_HH_LEFT  (0)
+#define DP_HH_RIGHT (1)
+#define DP_HL_LEFT  (2)
+#define DP_HL_RIGHT (3)
+#define DP_MH_LEFT  (4) /* minutes indicator */
+#define DP_MH_RIGHT (5)
+#define DP_ML_LEFT  (6)
+#define DP_ML_RIGHT (7)  /* second blinking indicator, inverted */
+#define DP_SH_LEFT  (8)  /* second blinking indicator */
+#define DP_SH_RIGHT (9)  
+#define DP_SL_LEFT  (10) /* dec. point for pressure and temperature */
+#define DP_SL_RIGHT (11) /* 1 = DST-active */
 
 //------------------------
 // BMP180 STD Defines
@@ -141,17 +158,19 @@ void     ws2812b_fill_rgb(uint32_t color);
 void     ws2812b_send_byte(uint8_t bt);
 void     ws2812_send_all(void);
 void     set_rgb_colour(uint8_t color);
-void          check_and_set_summertime(Time p);
-void          bme280_task(void);
-void          update_nixies(void);
-uint8_t       encode_to_bcd(uint8_t x);
-void          clear_nixie(uint8_t nr);
-void          ftest_nixies(void);
-void          fixed_random_rgb_colour(uint8_t s, bool rndm);
-bool          blanking_active(Time p);
-void          display_task(void);
-void          set_nixie_timedate(uint8_t x, uint8_t y, char z);
-void          init_timer2(void);
-void          init_ports(void);
+void     check_and_set_summertime(Time p);
+void     bme280_task(void);
+void     update_nixies(void);
+uint8_t  encode_to_bcd(uint8_t x);
+void     clear_nixie(uint8_t nr);
+void     ftest_nixies(void);
+void     fixed_random_rgb_colour(uint8_t s, bool rndm);
+bool     blanking_active(Time p);
+void	 dec_point_set(uint8_t dp);
+void	 dec_point_clr(uint8_t dp);
+void     display_task(void);
+void     set_nixie_timedate(uint8_t x, uint8_t y, char z);
+void     init_timer2(void);
+void     init_ports(void);
 
 #endif
