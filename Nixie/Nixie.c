@@ -472,9 +472,13 @@ void ftest_nixies(void)
 		        PORTC   |= (PRESSURESYMBOL | LED_IN19A); 
 				std_test = 9; 
 				break;
-		case 9: nixie_bits = 0xFF999999; std_test = 0; break;
+		case 9: nixie_bits  = 0xFF999999; // LEFT DP5..DP6 + RIGHT DP1..DP6 on
+				nixie_bits8 = 0x0F;       // LEFT DP1..DP4 on
+				std_test = 0; 
+				break;
 	} // switch
-	//rgb_colour = std_test & 0x07;
+	set_rgb_colour(std_test);
+	ws2812_send_all(); // Send color-bits to WS2812 leds
 } // ftest_nixies()
 
 /*-----------------------------------------------------------------------------
@@ -653,7 +657,6 @@ void display_task(void)
 	Time     p; // Time struct
 	uint8_t  c,x,y;
 	uint16_t r;
-	char     s[30];
 	
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
@@ -840,6 +843,10 @@ void display_task(void)
 			else              dec_point_clr(DP_SL_RIGHT);
 			break;
 	} // switch
+	if (!(PINB & HV_ON))
+	{	// Is HV-relay off?
+		set_rgb_colour(BLACK); // disable LEDs if so
+	} // if	
 	ws2812_send_all(); // Send color-bits to WS2812 leds
 } // display_task()
 
