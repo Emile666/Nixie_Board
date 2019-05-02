@@ -13,16 +13,16 @@
 #include "bme280.h"
 #include "eep.h"
 
-bool		  test_nixies = 0;					// S3 command / IR #9 command
-bool		  nixie_lifetimesaver = false;		// Toggle nixie's on (false), no LST or off (true), LST active - *3 IR remote
-bool		  override_lifetimesaver = false;	// Override lifestimesaver when True - *2 IR remote 	
-uint8_t       cnt_50usec  = 0;					// 50 usec. counter
-unsigned long t2_millis   = 0UL;				// msec. counter
-uint32_t      bme280_press = 0.0;			// Pressure E-1 mbar
-int16_t       bme280_temp  = 0;	  		    // Temperature in E-2 Celsius
-uint32_t	  bme280_hum   = 0;				// Humidity in Q22.10 format		
+bool		  test_nixies = 0;			// S3 command / IR #9 command
+bool          relay_status;             // Relay status, on (1) or off (0)
+bool          relay_on_IR;              // Request from remote-control to turn relay on/off
+uint8_t       cnt_50usec  = 0;			// 50 usec. counter
+unsigned long t2_millis   = 0UL;		// msec. counter
+uint32_t      bme280_press = 0.0;		// Pressure E-1 mbar
+int16_t       bme280_temp  = 0;	  		// Temperature in E-2 Celsius
+uint32_t	  bme280_hum   = 0;			// Humidity in Q22.10 format		
 
-bool          dst_active      = false;		// true = Daylight Saving Time active
+bool          dst_active      = false; // true = Daylight Saving Time active
 uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
@@ -655,7 +655,7 @@ void dec_point_clr(uint8_t dp)
 void display_task(void)
 {
 	Time     p; // Time struct
-	uint8_t  c,x,y;
+	uint8_t  c,x,y,	cnt_60sec = 0;
 	uint16_t r;
 	
 	nixie_bits  = 0x00000000; // clear all bits
@@ -685,13 +685,33 @@ void display_task(void)
 		else PORTB &= ~HV_ON; // relay off
 	} // else if
 	else if (blanking_active(p))
-		 PORTB &= ~HV_ON; // relay off
-	else PORTB |=  HV_ON; // relay on	
+	{
+		 if (display_60sec)
+		 {
+			 if (++cnt_60sec > 59)
+			 {
+				 cnt_60sec = 0;
+				 display_60sec = false;
+			 } // if
+			 PORTB |= HV_ON; // relay on for 60 sec.
+		 } // if
+		 else if (relay_on_IR)
+			  PORTB |= HV_ON;  // relay on request from IR remote
+		 else PORTB &= ~HV_ON; // relay off
+	} // else if
+	else 
+	{	// blanking is not active
+		if (!relay_on_IR)
+			 PORTB &= ~HV_ON; // relay off
+		else PORTB |=  HV_ON; // relay on if !test && !hv_relay_sw && !blanking_active && !relay_off_request_IR
+	} // else	
+	if (time_only)	// *0 IR remote
+	     y = 0;
+	else y = p.sec; // if
 	
-	switch (p.sec)
+	switch (y)
 	{ 
 		case 15: // display date & month
-			check_and_set_summertime(p); // check for Summer/Wintertime change
 			nixie_bits = encode_to_bcd(p.date);
 			nixie_bits <<= 12;
 			nixie_bits |= encode_to_bcd(p.mon);
@@ -843,7 +863,8 @@ void display_task(void)
 			else              dec_point_clr(DP_SL_RIGHT);
 			break;
 	} // switch
-	if (!(PINB & HV_ON))
+	relay_status = ((PINB & HV_ON) == HV_ON); // On or Off
+	if (!relay_status)
 	{	// Is HV-relay off?
 		set_rgb_colour(BLACK); // disable LEDs if so
 	} // if	

@@ -41,15 +41,14 @@
 
 bool time_only = false;					// Shows only time on the Nixies. time_only=false -> date and sensors are displayed
 bool display_60sec = false;				// Display time, date and sensor output for 60 sec. during Nixie life time saver period
-bool toggle_nixie_lifetimesaver = false;// Used to set nixie_lifetimesaver back to its original state before override_lifetiemsaver came active
 
 extern uint8_t rgb_pattern;             // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
 extern uint8_t fixed_rgb_colour;        // Color when rgb_pattern is FIXED
 
 extern uint8_t test_nixies;				// Sets Nixie clock in test mode
-extern bool nixie_lifetimesaver;		// Sets Nixie clock in Life Time Saving mode
-extern bool override_lifetimesaver;		// Override Blanking function
 extern uint8_t wheel_effect;			// Wheel-effect on every second and minute change
+extern bool    relay_status;            // Relay status, on (1) or off (0)
+extern bool    relay_on_IR;             // Request from remote-control to turn relay on/off
 
 // Allow all parts of the code access to the ISR data
 // NB. The data can be changed by the ISR at any time, even mid-function
@@ -316,9 +315,9 @@ void std_cmd(void)
 						}
 						break;
 					   
-		case CMD_MODE_HASH: if (ir_remote_key == IR_1)			// #1 - Set time via Nixie tubes
+		case CMD_MODE_HASH: idx = 0;
+		                    if (ir_remote_key == IR_1)			// #1 - Set time via Nixie tubes
 							{
-								idx = 0;
 								disable_task("Display");
 								wheel_effect = 0;
 								set_nixie_timedate(0, 6, 'T');
@@ -326,93 +325,52 @@ void std_cmd(void)
 							} // if
 							else if (ir_remote_key == IR_2)		// #2 - Set date via Nixie tubes
 							{
-								idx = 0;
 								disable_task("Display");
 								wheel_effect = 0;
 								set_nixie_timedate(0, 6, 'D');
 								cmd_state = CMD_DATE;
 							} // else if
-							else if (ir_remote_key == IR_7)		 // #3 - Set Nixie in Life Time Save mode (LST)
+							else if (ir_remote_key == IR_7)		// #7 - Set Nixie in Life Time Save mode (LST)
 							{
-								//idx  = 0;
-								if (nixie_lifetimesaver == false)
-								{
-									nixie_lifetimesaver = true;				// Nixies are off
-									override_lifetimesaver = false;			// Makes it possible to override with IR #4
-									toggle_nixie_lifetimesaver = false;		
+								if (relay_status)
+								{    // relay is ON
+									 relay_on_IR = false;
 								}
-								else
-								{
-									if (override_lifetimesaver == false)	// check to make sure #$ is not active		
-									{
-										nixie_lifetimesaver = false;		// Nixies are on	
-									}
-								}
+								else relay_on_IR = true;
 								cmd_state = NO_CMD;
-							}
-
-							else if (ir_remote_key == IR_8)		// #4 - Override Blanking / LST
+							} // else if
+							else if (ir_remote_key == IR_8)		// #8 - Override Blanking / LST
 							{
-								idx = 0;
-								if (override_lifetimesaver == false)
-								{
-									override_lifetimesaver = true;	// Override Blanking / LST
-									if (nixie_lifetimesaver == true)
-									{
-										toggle_nixie_lifetimesaver = true;
-									}
-									nixie_lifetimesaver = false;
+								if (!relay_status)
+								{    // relay is OFF
+									relay_on_IR = true;
 								}
-								else
-								{
-									if (toggle_nixie_lifetimesaver == true)
-									{
-										nixie_lifetimesaver = true;
-										toggle_nixie_lifetimesaver = false; 
-									}
-									override_lifetimesaver = false;
-								}
+								else relay_on_IR = false;
 								cmd_state = NO_CMD;
-							}
-
+							} // else if
 							else if (ir_remote_key == IR_9)		// #9 - Test Nixie tubes mode
 							{
-								//idx  = 0;
-								if (test_nixies == true)
-								{
-									test_nixies = false;
-								}
-								else
-								{
-									test_nixies = true;		//Run 0 to 9 test once
-								}
+								test_nixies = !test_nixies;
 								cmd_state = NO_CMD;
-							}
+							} // else if
 							break;		
 		
 		case CMD_MODE_ASTRIX: if (ir_remote_key == IR_0)			// *0 - Display only time
 							  {
 								 idx = 0;
-								 if (time_only == false)
-								 {
-									 time_only = true;
-								 }
-								 else
-								 {
-									 time_only = false;
-								 }
+								 time_only = !time_only;
 								 cmd_state = NO_CMD;
-							  }
+							  } // if
 
-							  else if (ir_remote_key == IR_1)		// *1 - Show time, date and sensors for 60 seconds during nixie_lts
+							  else if (ir_remote_key == IR_1)		// *1 - Show time, date and sensors for 60 seconds during nixie_blanking
 							  {
 								 idx = 0;
 								 if (display_60sec == false)
 								 {
 									display_60sec = true;
-								 }
-									cmd_state = NO_CMD;
-							  }
+								 } // if
+								 cmd_state = NO_CMD;
+							  } // else if
 
 							  else if ((ir_remote_key >= IR_7) || (ir_remote_key <= IR_9))	// *7 to *9 wheel effect		
 							  {
