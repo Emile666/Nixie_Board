@@ -1,7 +1,7 @@
  //
 //    FILE: dht.h
 //  AUTHOR: Rob Tillaart
-// VERSION: 0.1.22
+// VERSION: 0.1.29
 // PURPOSE: DHT Temperature & Humidity Sensor library for Arduino
 //     URL: http://arduino.cc/playground/Main/DHTLib
 //
@@ -11,7 +11,7 @@
 #ifndef dht22_h
 #define dht22_h
 
-#define DHT_LIB_VERSION "0.1.22"
+#define DHT_LIB_VERSION "0.1.29"
 
 #define DHTLIB_OK                   ( 0)
 #define DHTLIB_ERROR_CHECKSUM       (-1)
@@ -21,8 +21,8 @@
 #define DHTLIB_ERROR_ACK_H          (-5)
 
 #define DHTLIB_DHT11_WAKEUP         (18)
-#define DHTLIB_DHT11_LEADING_ZEROS  (1)
 #define DHTLIB_DHT_WAKEUP           (1)
+#define DHTLIB_DHT11_LEADING_ZEROS  (1)
 #define DHTLIB_DHT_LEADING_ZEROS    (6)
 
 // DHT22 input pin is PORTB bit 4

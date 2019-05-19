@@ -18,16 +18,17 @@
 #include "i2c.h"
 #include "command_interpreter.h"
 #include "eep.h"
+#include "Nixie.h"
 
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
-extern  uint8_t rgb_colour;
 extern  uint8_t test_nixies;
 extern  uint8_t blank_begin_h;
 extern  uint8_t blank_begin_m;
 extern  uint8_t blank_end_h;
 extern  uint8_t blank_end_m;
 extern  uint8_t wheel_effect;
+
 extern  uint8_t col_time;
 extern  uint8_t col_date;
 extern  uint8_t col_temp;
@@ -35,6 +36,7 @@ extern  uint8_t col_humi;
 extern  uint8_t col_dewp;
 extern  uint8_t col_pres;
 extern  uint8_t col_roll;
+extern  uint8_t rgb_pattern;           // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -102,44 +104,52 @@ uint8_t execute_single_command(char *s)
    
    switch (s[0])
    {
-	   case 'c': // Set all Colours
-				 val = atoi(&s[3]); // convert number until EOL
-	             switch (num)
-				 {
-					 case 0: // Colour for Time display
-							 col_time = val;
-					         eeprom_write_byte(EEPARB_COL_TIME,val);
-					         break;
-					 case 1: // Colour for Date & Year display
-							 col_date = val;
-							 eeprom_write_byte(EEPARB_COL_DATE,val);
-							 break;
-					 case 2: // Colour for Temperature display
-							 col_temp = val;
-							 eeprom_write_byte(EEPARB_COL_TEMP,val);
-							 break;
-					 case 3: // Colour for Humidity display
-							 col_humi = val;
-							 eeprom_write_byte(EEPARB_COL_HUMI,val);
-							 break;
-					 case 4: // Colour for Dew-point display
-							 col_dewp = val;
-							 eeprom_write_byte(EEPARB_COL_DEWP,val);
-							 break;
-					 case 5: // Colour for Pressure display
-							 col_pres = val;
-							 eeprom_write_byte(EEPARB_COL_PRES,val);
-							 break;
-					 case 6: // Colour for seconds rollover display
-							 col_roll = val;
-							 eeprom_write_byte(EEPARB_COL_ROLL,val);
-							 break;
-					 default: rval = ERR_NUM;
-							 break;
-				 } // switch
-				 sprintf(s,"col[%d]=%d\n",num,val); xputs(s);
-	             break;	
 				 
+	   case 'c': // Set default colours of RGB LED [0..6]
+				 val = atoi(&s[3]);
+				 if ((num > 6) || (val > 7))
+					rval = ERR_NUM;
+				 else
+				 {
+					eeprom_write_byte(EEPARB_COL_TIME + (num << 1),val);
+					switch (num)
+					{
+						case 0: xputs("col_time=");
+								col_time = val;
+								break;
+						case 1: xputs("col_date=");
+								col_date = val;
+								break;
+						case 2: xputs("col_temp=");
+								col_temp = val;
+								break;
+						case 3: xputs("col_humi=");
+								col_humi = val;
+								break;
+						case 4: xputs("col_dewp=");
+								col_dewp = val;
+								break;
+						case 5: xputs("col_pres=");
+								col_pres = val;
+								break;
+						case 6: xputs("col_roll=");
+								col_roll = val;
+								break;
+					} // switch
+				    switch (val)
+				    {
+					    case 0: xputs("black\n");   break;
+					    case 1: xputs("red\n")  ;   break;
+					    case 2: xputs("green\n");   break;
+					    case 3: xputs("yellow\n");  break;
+					    case 4: xputs("blue\n");    break;
+					    case 5: xputs("magenta\n"); break;
+					    case 6: xputs("cyan\n");    break;
+					    case 7: xputs("white\n");   break;
+				    } // switch
+			    } // else
+			    break;
+	   
 	   case 'd': // Set Date and Time
 				 switch (num)
 				 {
@@ -229,12 +239,24 @@ uint8_t execute_single_command(char *s)
 				 } // else					
 				 break;
 
-	   case 'l': // Set RGB LED [0..7]
-                 if (num > 7)
-						rval = ERR_NUM;
-				 else rgb_colour = num;
+	   case 'r': // Set rgb_pattern
+				 if (num > FIXED)
+					rval = ERR_NUM;
+				 else
+				 {
+					rgb_pattern = num;
+					eeprom_write_byte(EEPARB_RGB_PATT,rgb_pattern);
+					xputs("rgb_pattern = ");
+					switch (rgb_pattern)
+					{
+						case OFF    : xputs("OFF\n");     break;
+						case RANDOM : xputs("RANDOM\n");  break;
+						case DYNAMIC: xputs("DYNAMIC\n"); break;
+						case FIXED  : xputs("FIXED\n");   break;
+					} // switch
+				 } // else
 				 break;
-				 
+
 	   case 's': // System commands
 				 switch (num)
 				 {

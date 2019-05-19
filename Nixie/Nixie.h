@@ -78,6 +78,12 @@
 #define NIXIE_CLEAR_ALL ((NIXIE_CLEAR<<20)|(NIXIE_CLEAR<<16)|(NIXIE_CLEAR<<12)|(NIXIE_CLEAR<<8)|(NIXIE_CLEAR<<4)|NIXIE_CLEAR)
 #define WH_MAX          (10)
 
+// RGB-pattern mode
+#define OFF     (0) /* RGB leds are off */
+#define RANDOM  (1) /* Color is selected random */
+#define DYNAMIC (2) /* Color is selected by seconds */
+#define FIXED   (3) /* Color is selected by fixed_rgb_colour */
+
 //------------------------
 // Nixie Decimal Points
 //------------------------

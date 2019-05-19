@@ -32,6 +32,7 @@
 #define EEPARB_COL_PRES EEPTR1(0x1E)
 #define EEPARB_COL_ROLL EEPTR1(0x20)
 #define EEPARB_DST      EEPTR1(0x22)
+#define EEPARB_RGB_PATT EEPTR1(0x24)
 
 #define NO_INIT      (0xff)
 

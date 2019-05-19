@@ -1,12 +1,20 @@
 //
 //    FILE: dht.cpp
 //  AUTHOR: Rob Tillaart
-// VERSION: 0.1.22
+// VERSION: 0.1.29
 // PURPOSE: DHT Temperature & Humidity Sensor library for Arduino
 //     URL: http://arduino.cc/playground/Main/DHTLib
 //
 // HISTORY:
-// 0.1.22 Adapted by Emile for Atmel Studio and DHT22 only
+// 0.1.29A Adapted by Emile for Atmel Studio and DHT22 only
+// 0.1.29 2018-09-02 fix negative temperature DHT12 - issue #111
+// 0.1.28 2018-04-03 refactor
+// 0.1.27 2018-03-26 added _disableIRQ flag
+// 0.1.26 2017-12-12 explicit support for AM23XX series and DHT12
+// 0.1.25 2017-09-20 FIX https://github.com/RobTillaart/Arduino/issues/80
+// 0.1.24 2017-07-27 FIX https://github.com/RobTillaart/Arduino/issues/33  double -> float
+// 0.1.23 2017-07-24 FIX https://github.com/RobTillaart/Arduino/issues/31
+// 0.1.22 undo delayMicroseconds() for wakeups larger than 8
 // 0.1.21 replace delay with delayMicroseconds() + small fix
 // 0.1.20 Reduce footprint by using uint8_t as error codes. (thanks to chaveiro)
 // 0.1.19 masking error for DHT11 - FIXED (thanks Richard for noticing)
@@ -60,7 +68,7 @@ int8_t dht22_read_sensor(void)
 	DDRB  |=  DHT22_PIN; // Set as output port
 	PORTB &= ~DHT22_PIN; // write a 0 
 	delay_msec(DHTLIB_DHT_WAKEUP); // delay 1 msec.
-	PORTB |= DHT22_PIN;  // write a 1
+	//PORTB |= DHT22_PIN;  // write a 1
 	DDRB  &= ~DHT22_PIN; // set to input again     
 
     while ((PINB & DHT22_PIN))
@@ -112,8 +120,8 @@ int8_t dht22_read_sensor(void)
             return DHTLIB_ERROR_TIMEOUT;
         } // if
     } // for
-    DDRB  |= DHT22_PIN; // set as output again
-	PORTB |= DHT22_PIN; // set output pin high
+    //DDRB  |= DHT22_PIN; // set as output again
+	//PORTB |= DHT22_PIN; // set output pin high
     return DHTLIB_OK;
 } // dht22_read_sensor()
 
@@ -126,8 +134,8 @@ int8_t dht22_read(uint16_t *humidity, int16_t *temperature)
     bits[2] &= 0x83;
 
     // CONVERT AND STORE
-    *humidity    = ((bits[0] << 8) | bits[1]);
-    *temperature = (((bits[2] & 0x7F) << 8) | bits[3]);
+    *humidity    = (((int16_t)bits[0] << 8) | bits[1]);
+    *temperature = (((int16_t)(bits[2] & 0x7F) << 8) | bits[3]);
     if (bits[2] & 0x80)  // negative temperature
     {
         *temperature = -*temperature;

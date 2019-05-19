@@ -45,21 +45,20 @@ uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
 
 extern bool time_only;				// Toggles between time and date only with no RGB to all task shown
-extern bool default_rgb_pattern;	// Set RGB colour to a default pattern
-extern bool random_rgb_pattern;		// Change per second the RGB colour in a random pattern
-extern bool fixed_rgb_pattern;		// Change per second the RGB colour in a fix pattern	
 extern bool display_60sec;			// Display time, date and sensor outputs for 60 sec.
-extern uint8_t fixed_rgb_colour;
+
+uint8_t rgb_pattern = FIXED;		  // RGB color mode: [OFF, RANDOM, DYNAMIC, FIXED]
+uint8_t fixed_rgb_colour = CYAN;	  // RGB colour variable used in Nixie.c
 
 uint8_t       wheel_effect    = 0;    // 0: none, 1: from 59->00, 2: every second/minute
 bool          display_time    = true; // true = hh:mm:ss is on display 
-uint8_t		  col_time; // Colour for Time display
-uint8_t		  col_date; // Colour for Date & Year display
-uint8_t       col_temp; // Colour for Temperature display
-uint8_t       col_humi; // Colour for Humidity display
-uint8_t       col_dewp; // Colour for Dew-point display
-uint8_t       col_pres; // Colour for Pressure display
-uint8_t       col_roll; // Colour for second roll-over
+uint8_t		  col_time;				  // Colour for Time display
+uint8_t		  col_date;				  // Colour for Date & Year display
+uint8_t       col_temp; 			  // Colour for Temperature display
+uint8_t       col_humi; 			  // Colour for Humidity display
+uint8_t       col_dewp; 			  // Colour for Dew-point display
+uint8_t       col_pres; 			  // Colour for Pressure display
+uint8_t       col_roll; 			  // Colour for second roll-over
 
 extern char   rs232_inbuf[];          // RS232 input buffer
 
@@ -70,7 +69,7 @@ extern char   rs232_inbuf[];          // RS232 input buffer
 // Bits 07..00: Seconds       : SHD  SHC  SHB  SHA  SLD  SLC  SLB  SLA
 //---------------------------------------------------------------------------
 unsigned long int nixie_bits = 0UL;
-uint8_t           rgb_colour = BLACK;
+uint8_t           rgb_colour = CYAN;
 
 /*------------------------------------------------------------------
   Purpose  : This function returns the number of milliseconds since
@@ -524,35 +523,8 @@ void ftest_nixies(void)
 		case 8: nixie_bits = 0xFF888888; PORTC |= (PRESSURESYMBOL | LED_IN19A); std_test = 9; break;
 		case 9: nixie_bits = 0xFF999999; std_test = 0; test_nixies = false; break;
 	} // switch
-	//rgb_colour = std_test & 0x07;
+	rgb_colour = std_test & 0x07;
 } // ftest_nixies()
-
-/*------------------------------------------------------------------------
-  Purpose  : This functions is called when random_rgb == true.
-			 Called every second.
-  Variables: -
-  Returns  : -
-  ------------------------------------------------------------------------*/
-void fixed_random_rgb_colour(uint8_t s, bool rndm)
-{
-	
-	if (rndm == true )
-	{
-		s = rand() % 60;
-	}
-	
-	switch (s % 7)
-	{
-		case  0: rgb_colour = WHITE;   break;
-		case  1: rgb_colour = RED;     break;
-		case  2: rgb_colour = GREEN;   break;
-		case  3: rgb_colour = BLUE;    break;
-		case  4: rgb_colour = YELLOW;  break;
-		case  5: rgb_colour = MAGENTA; break;
-		case  6: rgb_colour = CYAN;    break;
-		default: rgb_colour = BLACK;   break;	
-	} // Switch
-} // fixed_random_rgb_colour
 
 /*------------------------------------------------------------------------
   Purpose  : This function decides if the current time falls between the
@@ -583,30 +555,20 @@ void display_task(void)
 	
 	nixie_bits = 0x00000000; // clear all bits
 	ds3231_gettime(&p);
-	display_time = false; // start with no-time on display
+	display_time = false;    // start with no-time on display
 
-	if (time_only == true)			// *0 IR remote
+	if (time_only == true)   // *0 IR remote
 		 y = 0;
 	else y = p.sec; // End time_only
 	
-	if (random_rgb_pattern == true)
-		fixed_random_rgb_colour(p.sec, true);
-	else if (fixed_rgb_pattern == true)
-		fixed_random_rgb_colour(p.sec, false);
-	else if (default_rgb_pattern == false)
+	switch (rgb_pattern)
 	{
-		switch (fixed_rgb_colour)
-		{
-			case 0: rgb_colour = BLACK;   break;
-			case 1: rgb_colour = RED;     break;
-			case 2: rgb_colour = GREEN;   break;
-			case 3: rgb_colour = BLUE;    break;
-			case 4: rgb_colour = YELLOW;  break;
-			case 5: rgb_colour = MAGENTA; break;
-			case 6: rgb_colour = CYAN;    break;
-			case 7: rgb_colour = WHITE;   break;
-		} // End Switch
-	} // End random_rgb_pattern
+		case RANDOM:  rgb_colour = rand() % 8; break;
+		case DYNAMIC: rgb_colour = p.sec % 8;  break;
+		case FIXED:   rgb_colour = col_time;   break;
+		case OFF:
+		default:      rgb_colour = BLACK;      break;
+	} // switch
 
 	if (display_60sec == true)		// *1 IR Remote : Display for 60 seconds time, date and sensor outputs during Nixie lifetimesaver period		
 	{
@@ -636,9 +598,9 @@ void display_task(void)
 			nixie_bits <<= 4;
 			clear_nixie(3);
 			clear_nixie(6);
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				rgb_colour = GREEN;
+				rgb_colour = col_date;
 			} // if		
 			break;
 
@@ -650,9 +612,9 @@ void display_task(void)
 			nixie_bits <<= 4;
 			clear_nixie(1);
 			clear_nixie(6);
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				rgb_colour = GREEN;
+				rgb_colour = col_date;
 			} // if
 			break;
 
@@ -661,16 +623,15 @@ void display_task(void)
 			nixie_bits = encode_to_bcd(x);
 			nixie_bits <<= 4;
 			nixie_bits |= (uint8_t)(10.0 * (bmp180_temp - x));
-			nixie_bits <<= 12;
-			nixie_bits |= RIGHT_DP2;
-			clear_nixie(4);
-			clear_nixie(5);
-			clear_nixie(6);
+			nixie_bits |= RIGHT_DP5;
+			clear_nixie(1);
+			clear_nixie(2);
+			clear_nixie(3);
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL);
 			PORTC |=  DEGREESYMBOL | LED_IN19A;
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				rgb_colour = RED;
+				rgb_colour = col_temp;
 			} // if
 			break;
 
@@ -680,18 +641,25 @@ void display_task(void)
 			nixie_bits <<= 8;
 			x = (uint8_t)(bmp180_pressure - (int16_t)x * 100);
 			nixie_bits |= encode_to_bcd(x);
-			nixie_bits <<= 8;
+			nixie_bits <<= 4;
 			x = (uint8_t)(10 * (bmp180_pressure - (int16_t)bmp180_pressure));
-			nixie_bits |= (x << 4);
-			nixie_bits |= RIGHT_DP4;
-			clear_nixie(6);
+			nixie_bits |= x;
+			nixie_bits |= RIGHT_DP5;
+			clear_nixie(1);
 			PORTC &= ~(HUMIDITYSYMBOL | DEGREESYMBOL);
 			PORTC |=  PRESSURESYMBOL | LED_IN19A;
-			if (default_rgb_pattern == true)
+			if (rgb_pattern == FIXED)
 			{
-				rgb_colour = CYAN;
+				rgb_colour = col_pres;
 			} // if
 			break;
+
+		case 0: // set colour during roll-over
+			if ((wheel_effect > 0) && (rgb_pattern == FIXED))
+			{
+				rgb_colour = col_roll;
+			}
+			// FALL-THROUGH, no break here
 
 		default: // display normal time
 		    display_time = true;
@@ -701,10 +669,6 @@ void display_task(void)
 			nixie_bits <<= 8; // SHL 8
 			nixie_bits |= encode_to_bcd(p.sec);
 			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-			if (default_rgb_pattern == true)
-			{
-				rgb_colour = YELLOW;
-			} // if
 			if (p.sec & 0x01) nixie_bits |=  RIGHT_DP4;
 			else              nixie_bits |=  LEFT_DP5;
 			if (p.min & 0x01) nixie_bits |=  RIGHT_DP2;
@@ -777,7 +741,7 @@ int main(void)
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
 	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
-	add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
+	//add_task(dht22_task   ,"DHT22"  ,250, 5000); // Run DHT22 sensor process every 5 sec.
 	add_task(bmp180_task  ,"BMP180" ,350, 5000); // Run BMP180 sensor process every second.
 
 	sei(); // set global interrupt enable, start task-scheduler
@@ -788,6 +752,8 @@ int main(void)
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m); 
 	xputs(s);
+	xputs("wheel_effect:"); sprintf(s,"%d, ",wheel_effect); xputs(s);
+	xputs("rgb_pattern:");  sprintf(s,"%d\n",rgb_pattern);  xputs(s);
     while(1)
     {   // Run all scheduled tasks here
 		dispatch_tasks(); // Run Task-Scheduler

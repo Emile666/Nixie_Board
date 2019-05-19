@@ -22,6 +22,7 @@ extern uint8_t col_humi;
 extern uint8_t col_dewp;
 extern uint8_t col_pres;
 extern uint8_t col_roll;
+extern uint8_t rgb_pattern;
 
 void check_and_init_eeprom(void)
 {
@@ -38,11 +39,12 @@ void check_and_init_eeprom(void)
 		eeprom_write_byte(EEPARB_WHEEL,  2);       // Wheel-effect for digits
 		eeprom_write_byte(EEPARB_COL_TIME,BLACK);  // Colour for normal time-display
 		eeprom_write_byte(EEPARB_COL_DATE,GREEN);  // Colour for Date & Year display
-		eeprom_write_byte(EEPARB_COL_TEMP,YELLOW); // Colour for Temperature display
+		eeprom_write_byte(EEPARB_COL_TEMP,RED);    // Colour for Temperature display
 		eeprom_write_byte(EEPARB_COL_HUMI,BLUE);   // Colour for Humidity display
 		eeprom_write_byte(EEPARB_COL_DEWP,CYAN);   // Colour for Dewpoint display
-		eeprom_write_byte(EEPARB_COL_PRES,RED);    // Colour for Pressure display
+		eeprom_write_byte(EEPARB_COL_PRES,YELLOW); // Colour for Pressure display
 		eeprom_write_byte(EEPARB_COL_ROLL,WHITE);  // Colour for Seconds rollover display
+		eeprom_write_byte(EEPARB_RGB_PATT,FIXED);  // rgb-pattern
 	} // if
 } // check_and_init_eeprom()
 
@@ -60,6 +62,7 @@ void read_eeprom_parameters(void)
 	col_dewp      = eeprom_read_byte(EEPARB_COL_DEWP);
 	col_pres      = eeprom_read_byte(EEPARB_COL_PRES);
 	col_roll      = eeprom_read_byte(EEPARB_COL_ROLL);
+	rgb_pattern   = eeprom_read_byte(EEPARB_RGB_PATT);
 } // read_eeprom_parameters()
 
 void write_eeprom_parameters(void)
@@ -76,4 +79,5 @@ void write_eeprom_parameters(void)
 	eeprom_write_byte(EEPARB_COL_DEWP,col_dewp);
 	eeprom_write_byte(EEPARB_COL_PRES,col_pres);
 	eeprom_write_byte(EEPARB_COL_ROLL,col_roll);
+	eeprom_write_byte(EEPARB_RGB_PATT,rgb_pattern);
 } // write_eeprom_parameters()
