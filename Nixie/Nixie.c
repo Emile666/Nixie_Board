@@ -532,6 +532,26 @@ void set_rgb_colour(uint8_t color)
 } // set_rgb_colour
 
 /*------------------------------------------------------------------------
+  Purpose  : This function converts hours and minutes to minutes.
+             blanking time for the Nixies.
+  Variables: p: Time struct containing actual time
+  Returns  : true: blanking is true, false: no blanking
+  ------------------------------------------------------------------------*/
+uint16_t cmin(uint8_t h, uint8_t m)
+{
+	uint16_t x1 = (uint16_t)h << 2; // 4*h
+	uint16_t x2;
+	
+	x2  = x1 << 1; // x2 = 8*h
+	x1 += x2;      // x1 = 12*h
+	x2 <<= 1;      // x2 = 16*h
+	x1 += x2;      // x1 = 28*h
+	x2 <<= 1;      // x2 = 32*h
+	x1 += x2;      // x1 = 60*h
+	return x1 + m; // 60*h + m
+} // cmin()
+
+/*------------------------------------------------------------------------
   Purpose  : This function decides if the current time falls between the
              blanking time for the Nixies.
   Variables: p: Time struct containing actual time
@@ -539,11 +559,13 @@ void set_rgb_colour(uint8_t color)
   ------------------------------------------------------------------------*/
 bool blanking_active(Time p)
 {
-	if ( ((p.hour >  blank_end_h)   && (p.hour <  blank_begin_h)) ||
-	     ((p.hour == blank_end_h)   && (p.min  >= blank_end_m))   ||
-	     ((p.hour == blank_begin_h) && (p.min  <  blank_begin_m)))
-	     return false;
-	else return true;
+	uint16_t x = cmin(p.hour       , p.min);
+	uint16_t b = cmin(blank_begin_h, blank_begin_m);
+	uint16_t e = cmin(blank_end_h  , blank_end_m);
+	
+	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
+	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
+	return (b >= e) && ((x >= b) || (x <= e)) || ((x >= b) && (x < e)); 
 } // blanking_active()
 
 /*------------------------------------------------------------------------
