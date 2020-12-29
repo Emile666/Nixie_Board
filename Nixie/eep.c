@@ -22,6 +22,7 @@ extern uint8_t col_humi;
 extern uint8_t col_dewp;
 extern uint8_t col_pres;
 extern uint8_t col_roll;
+extern bool    dst_active; // true = Daylight Saving Time active
 
 void check_and_init_eeprom(void)
 {
@@ -43,6 +44,7 @@ void check_and_init_eeprom(void)
 		eeprom_write_byte(EEPARB_COL_DEWP,CYAN);   // Colour for Dewpoint display
 		eeprom_write_byte(EEPARB_COL_PRES,RED);    // Colour for Pressure display
 		eeprom_write_byte(EEPARB_COL_ROLL,WHITE);  // Colour for Seconds rollover display
+		eeprom_write_byte(EEPARB_DST,0);           // Daylight-savings time
 	} // if
 } // check_and_init_eeprom()
 
@@ -60,6 +62,7 @@ void read_eeprom_parameters(void)
 	col_dewp      = eeprom_read_byte(EEPARB_COL_DEWP);
 	col_pres      = eeprom_read_byte(EEPARB_COL_PRES);
 	col_roll      = eeprom_read_byte(EEPARB_COL_ROLL);
+	dst_active    = eeprom_read_byte(EEPARB_DST);
 } // read_eeprom_parameters()
 
 void write_eeprom_parameters(void)
@@ -75,5 +78,5 @@ void write_eeprom_parameters(void)
 	eeprom_write_byte(EEPARB_COL_HUMI,col_humi);
 	eeprom_write_byte(EEPARB_COL_DEWP,col_dewp);
 	eeprom_write_byte(EEPARB_COL_PRES,col_pres);
-	eeprom_write_byte(EEPARB_COL_ROLL,col_roll);
+	eeprom_write_byte(EEPARB_DST     ,dst_active);
 } // write_eeprom_parameters()

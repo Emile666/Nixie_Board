@@ -40,6 +40,7 @@ extern  uint8_t col_roll;
 extern  bool    hv_relay_sw;  // switch for hv_relay
 extern  bool    hv_relay_fx;  // fix for hv_relay
 extern  uint8_t rgb_pattern;  // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
+extern  bool    dst_active;   // true = Daylight Saving Time active
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -178,7 +179,9 @@ uint8_t execute_single_command(char *s)
 							 ds3231_gettime(&p);
 							 xputs("DS3231: ");
 							 print_dow(p.dow);
-							 sprintf(s2," %02d-%02d-%d, %02d:%02d:%02d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+							 sprintf(s2," %02d-%02d-%d, %02d:%02d:%02d",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+							 xputs(s2);
+							 sprintf(s2," dst:%d, blanking:%d\n", dst_active, blanking_active(p));
 							 xputs(s2);
 							 break;
 							 

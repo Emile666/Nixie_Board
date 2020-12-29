@@ -15,7 +15,7 @@
 
 bool		  test_nixies = 0;			// S3 command / IR #9 command
 bool          relay_status;             // Relay status, on (1) or off (0)
-bool          relay_on_IR;              // Request from remote-control to turn relay on/off
+bool          relay_on_IR = true;       // Request from remote-control to turn relay on/off
 uint8_t       cnt_50usec  = 0;			// 50 usec. counter
 unsigned long t2_millis   = 0UL;		// msec. counter
 uint32_t      bme280_press = 0.0;		// Pressure E-1 mbar
@@ -172,10 +172,12 @@ void ws2812_send_all(void)
   ------------------------------------------------------------------------*/
 void check_and_set_summertime(Time p)
 {
-	uint8_t        day,lsun03,lsun10;
+	uint8_t        hr,day,lsun03,lsun10,dst_eep;
     static uint8_t advance_time = 0;
 	static uint8_t revert_time  = 0;
+#ifdef DEBUG_SENSORS
 	char           s[20];
+#endif
 	
 	if (p.mon == 3)
 	{
@@ -234,6 +236,25 @@ void check_and_set_summertime(Time p)
 	} // else if
 	else if ((p.mon < 3) || (p.mon > 10)) dst_active = false;
 	else                                  dst_active = true; 
+
+    //------------------------------------------------------------------------
+    // If, for some reason, the clock was powered-off during the change to
+    // summer- or winter-time, the eeprom value differs from the actual
+    // dst_active value. If so, set the actual sommer- and winter-time.
+    //------------------------------------------------------------------------
+    dst_eep = (uint8_t)eeprom_read_byte(EEPARB_DST);
+    if (dst_active && !dst_eep)
+    {   // It is summer-time, but clock has not been advanced yet
+	    hr = (p.hour >= 23) ? 0 : p.hour + 1;
+	    ds3231_settime(hr,p.min,p.sec); // Set summer-time to 1 hour later
+	    eeprom_write_byte(EEPARB_DST,0x01); // set DST in eeprom
+    } // if
+    else if (!dst_active && dst_eep)
+    {   // It is winter-time, but clock has not been moved back yet
+	    hr = (p.hour > 0) ? p.hour - 1 : 23;
+	    ds3231_settime(hr,p.min,p.sec); // Set summer-time to 1 hour earlier
+	    eeprom_write_byte(EEPARB_DST,0x00); // reset DST in eeprom
+    } // if
 } // check_and_set_summertime()
 
 /*------------------------------------------------------------------------
@@ -565,7 +586,7 @@ bool blanking_active(Time p)
 	
 	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
 	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
-	return (b >= e) && ((x >= b) || (x <= e)) || ((x >= b) && (x < e)); 
+	return ((b >= e) && ((x >= b) || (x <= e))) || ((x >= b) && (x < e)); 
 } // blanking_active()
 
 /*------------------------------------------------------------------------
@@ -1033,7 +1054,7 @@ int main(void)
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
 	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
-	xputs("Nixie board v0.30, Emile, Martijn, Ronald\n");
+	xputs("Nixie board v0.31, Emile, Martijn, Ronald\n");
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
