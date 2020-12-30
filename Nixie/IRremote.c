@@ -47,8 +47,8 @@ extern uint8_t fixed_rgb_colour;        // Color when rgb_pattern is FIXED
 
 extern uint8_t test_nixies;				// Sets Nixie clock in test mode
 extern uint8_t wheel_effect;			// Wheel-effect on every second and minute change
-extern bool    relay_status;            // Relay status, on (1) or off (0)
-extern bool    relay_on_IR;             // Request from remote-control to turn relay on/off
+extern bool    relay_on_IR;             // Request from remote-control to turn relay on
+extern bool    relay_off_IR;            // Request from remote-control to turn relay off
 
 // Allow all parts of the code access to the ISR data
 // NB. The data can be changed by the ISR at any time, even mid-function
@@ -330,24 +330,16 @@ void std_cmd(void)
 								set_nixie_timedate(0, 6, 'D');
 								cmd_state = CMD_DATE;
 							} // else if
-							else if (ir_remote_key == IR_7)		// #7 - Set Nixie in Life Time Save mode (LST)
-							{
-								if (relay_status)
-								{    // relay is ON
-									 relay_on_IR = false;
-								}
-								else relay_on_IR = true;
-								cmd_state = NO_CMD;
+							else if (ir_remote_key == IR_7)     // #7 - Set Nixie in Life Time Save mode (LST)
+							{                                                            
+								relay_on_IR = !relay_on_IR;
+								cmd_state   = NO_CMD;
 							} // else if
-							else if (ir_remote_key == IR_8)		// #8 - Override Blanking / LST
+							else if (ir_remote_key == IR_8)     // #8 - Override Blanking / LST
 							{
-								if (!relay_status)
-								{    // relay is OFF
-									relay_on_IR = true;
-								}
-								else relay_on_IR = false;
-								cmd_state = NO_CMD;
-							} // else if
+								relay_off_IR = !relay_off_IR;
+								cmd_state    = NO_CMD;
+							}
 							else if (ir_remote_key == IR_9)		// #9 - Test Nixie tubes mode
 							{
 								test_nixies = !test_nixies;
@@ -365,10 +357,7 @@ void std_cmd(void)
 							  else if (ir_remote_key == IR_1)		// *1 - Show time, date and sensors for 60 seconds during nixie_blanking
 							  {
 								 idx = 0;
-								 if (display_60sec == false)
-								 {
-									display_60sec = true;
-								 } // if
+								 display_60sec = !display_60sec; // toggle display 60 sec. mode
 								 cmd_state = NO_CMD;
 							  } // else if
 

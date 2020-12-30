@@ -15,7 +15,8 @@
 
 bool		  test_nixies = 0;			// S3 command / IR #9 command
 bool          relay_status;             // Relay status, on (1) or off (0)
-bool          relay_on_IR = true;       // Request from remote-control to turn relay on/off
+bool          relay_on_IR = false;      // Request from remote-control to turn relay on
+bool          relay_off_IR = false;     // Request from remote-control to turn relay off
 uint8_t       cnt_50usec  = 0;			// 50 usec. counter
 unsigned long t2_millis   = 0UL;		// msec. counter
 uint32_t      bme280_press = 0.0;		// Pressure E-1 mbar
@@ -733,18 +734,18 @@ void display_task(void)
 		 {
 			 if (++cnt_60sec > 59)
 			 {
-				 cnt_60sec = 0;
-				 display_60sec = false;
+				 cnt_60sec     = 0;     // reset timer
+				 display_60sec = false; // reset trigger
 			 } // if
 			 PORTB |= HV_ON; // relay on for 60 sec.
 		 } // if
 		 else if (relay_on_IR)
-			  PORTB |= HV_ON;  // relay on request from IR remote
+			  PORTB |=  HV_ON; // relay on request from IR remote
 		 else PORTB &= ~HV_ON; // relay off
 	} // else if
 	else 
 	{	// blanking is not active
-		if (!relay_on_IR)
+		if (relay_off_IR)
 			 PORTB &= ~HV_ON; // relay off
 		else PORTB |=  HV_ON; // relay on if !test && !hv_relay_sw && !blanking_active && !relay_off_request_IR
 	} // else	
