@@ -23,7 +23,8 @@
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
 extern  uint8_t rgb_colour;
-extern bool test_nixies;
+extern  bool test_nixies;
+extern  char nixie_ver[];
 
 extern  uint8_t blank_begin_h;
 extern  uint8_t blank_begin_m;
@@ -41,6 +42,11 @@ extern  bool    hv_relay_sw;  // switch for hv_relay
 extern  bool    hv_relay_fx;  // fix for hv_relay
 extern  uint8_t rgb_pattern;  // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
 extern  bool    dst_active;   // true = Daylight Saving Time active
+extern  bool    set_col_white;   // true = esp8266 time update was successful
+extern  bool    blanking_invert; // Invert blanking-active IR-command
+extern  bool    enable_test_IR;  // Enable Test-pattern IR-command
+extern  bool    last_esp8266;    // true = last esp8266 command was successful
+extern  uint16_t esp8266_tmr;    // timer for updating ESP8266
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -101,10 +107,11 @@ uint8_t execute_single_command(char *s)
    uint8_t  rval = NO_ERR;
    char     s2[40]; // Used for printing to RS232 port
    char     *s1;
-   uint8_t  d,m,h,sec;
+   uint8_t  d,mo,h,mi,sec;
    uint16_t y;
    Time     p;
    int16_t  temp;
+   const char sep[] = ":-.";
    
    switch (s[0])
    {
@@ -150,29 +157,29 @@ uint8_t execute_single_command(char *s)
 				 switch (num)
 				 {
 					case 0: // Set Date
-							s1 = strtok(&s[3],":-");
+							s1 = strtok(&s[3],sep);
 							d  = atoi(s1);
-							s1 = strtok(NULL ,":-");
-							m  = atoi(s1);
-							s1 = strtok(NULL ,":-");
+							s1 = strtok(NULL ,sep);
+							mo = atoi(s1);
+							s1 = strtok(NULL ,sep);
 							y  = atoi(s1);
 							xputs("Date: ");
-							print_dow(ds3231_calc_dow(d,m,y));
-							sprintf(s2," %02d-%02d-%d\n",d,m,y);
+							print_dow(ds3231_calc_dow(d,mo,y));
+							sprintf(s2," %02d-%02d-%d\n",d,mo,y);
 							xputs(s2);
-							ds3231_setdate(d,m,y); // write to DS3231 IC
+							ds3231_setdate(d,mo,y); // write to DS3231 IC
 							break;
 							
 					case 1: // Set Time
-							s1 = strtok(&s[3],":-.");
+							s1 = strtok(&s[3],sep);
 							h  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
-							m  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							s1 = strtok(NULL ,sep);
 							sec= atoi(s1);
-							sprintf(s2,"Time: %02d:%02d:%02d\n",h,m,sec);
+							sprintf(s2,"Time: %02d:%02d:%02d\n",h,mi,sec);
 							xputs(s2);
-							ds3231_settime(h,m,sec); // write to DS3231 IC
+							ds3231_settime(h,mi,sec); // write to DS3231 IC
 							break;
 							
 					case 2: // Get Date & Time
@@ -199,31 +206,31 @@ uint8_t execute_single_command(char *s)
 							 break;
 							 
 					case 4: // Set Start-Time for blanking Nixies
-							s1 = strtok(&s[3],":-.");
+							s1 = strtok(&s[3],sep);
 							h  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
-							m  = atoi(s1);
-							if ((h < 24) && (m < 60))
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							if ((h < 24) && (mi < 60))
 							{
 								blank_begin_h = h;
-								blank_begin_m = m;
+								blank_begin_m = mi;
 								write_eeprom_parameters();
-								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,m);
+								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,mi);
 								xputs(s2);
 							} // if
 							break;
 							
 					case 5: // Set End-Time for blanking Nixies
-							s1 = strtok(&s[3],":-.");
+							s1 = strtok(&s[3],sep);
 							h  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
-							m  = atoi(s1);
-							if ((h < 24) && (m < 60))
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							if ((h < 24) && (mi < 60))
 							{
 								blank_end_h = h;
-								blank_end_m = m;
+								blank_end_m = mi;
 								write_eeprom_parameters();
-								sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,m);
+								sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,mi);
 								xputs(s2);
 							} // if
 							break;		 
@@ -233,6 +240,52 @@ uint8_t execute_single_command(char *s)
 				 } // switch
 				 break;
 				 
+        case 'e': // The e commands are responses back from the ESP8266 NTP Server
+        // Possible response: "e0 26-05-2021.15:55:23"
+        switch (num)
+        {
+	        case 0: // E0 = Get Date & Time from the ESP8266
+	        s1 = strtok(&s[3],sep);
+	        d  = atoi(s1);
+	        s1 = strtok(NULL ,sep);
+	        mo = atoi(s1);
+	        s1 = strtok(NULL ,sep);
+	        y  = atoi(s1);
+	        // Second part is the time from the ESP8266
+	        s1 = strtok(NULL,sep);
+	        h  = atoi(s1);
+	        if (dst_active)
+	        {
+		        if (h == 23)
+		        h = 0;
+		        else h++;
+	        } // if
+	        s1  = strtok(NULL ,sep);
+	        mi  = atoi(s1);
+	        s1  = strtok(NULL ,sep);
+	        sec = atoi(s1);
+	        if (sec == 59) // add 1 second for the transmit delay
+	        sec = 0;
+	        else sec++;
+	        if (y > 2020)
+	        {   // Valid Date & Time received
+		        ds3231_setdate(d,mo,y);   // write to DS3231 IC
+		        ds3231_settime(h,mi,sec); // write to DS3231 IC
+		        last_esp8266 = true;      // response was successful
+		        set_col_white = true;     // show briefly on display
+		        esp8266_tmr = 0;          // Reset update timer
+	        } // if
+	        else last_esp8266 = false;   // response not successful
+	        xputs("Date: ");
+	        print_dow(ds3231_calc_dow(d,mo,y));
+	        sprintf(s2," %d-%d-%d ",d,mo,y);
+	        xputs(s2);
+	        sprintf(s2,"Time: %d:%d:%d\n",h,mi,sec);
+	        xputs(s2);
+	        break;
+        } // switch
+        break;
+
 	   case 'l': // Set RGB LED [0..7]
 				 if (num > 7) 
 				      rval       = ERR_NUM;
@@ -265,7 +318,7 @@ uint8_t execute_single_command(char *s)
 				 switch (num)
 				 {
 					 case 0: // revision
-							 xputs("\nNixie board v0.3\n");
+							 xputs(nixie_ver);
 							 break;
 					 case 1: // List all I2C devices
 					         i2c_scan();

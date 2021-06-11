@@ -25,96 +25,50 @@
 #ifndef IRremote_h
 #define IRremote_h
 
-//==============================================================================
-//                           N   N  EEEEE   CCCC
-//                           NN  N  E      C
-//                           N N N  EEE    C
-//                           N  NN  E      C
-//                           N   N  EEEEE   CCCC
-//==============================================================================
-#define NEC_BITS          32
-#define NEC_HDR_MARK    9000
-#define NEC_HDR_SPACE   4500
-#define NEC_BIT_MARK     560
-#define NEC_ONE_SPACE   1690
-#define NEC_ZERO_SPACE   560
-#define NEC_RPT_SPACE   2250
+// VS1838B IR infrared remote
+//-------------------------------------------------
+// see: https://www.sbprojects.net/knowledge/ir/nec.php
+
+#define CLK_TICKS         (16) // 1 clock-tick = 16 usec: timer1 @ 62.5 kHz
+// LSB first, 1 start bit + 16 bit address + 8 bit command + 8 bit inverted command + 1 stop bit.
+#define NEC_ADDRESS_BITS  (16) // 16 bit address or 8 bit address and 8 bit inverted address
+#define NEC_COMMAND_BITS  (16) // Command and inverted command
+#define NEC_BITS          (NEC_ADDRESS_BITS + NEC_COMMAND_BITS)
+#define NEC_UNIT          (560)
+
+#define NEC_HDR_MARK      (16 * NEC_UNIT) /* mark (0) time for header */
+#define NEC_HDR_SPACE     (8 * NEC_UNIT)  /* space (1) time for header */
+#define NEC_BIT_MARK      (NEC_UNIT)
+#define NEC_ONE_SPACE     (3 * NEC_UNIT)  /* space length of a one */
+#define NEC_ZERO_SPACE    (NEC_UNIT)      /* space length of a zero */
+#define NEC_RPT_SPACE     (4 * NEC_UNIT)  /* repeat space length */
+
+#define HDR_MARK_LTICKS   ((NEC_HDR_MARK/CLK_TICKS)   - 40) /* approx.  7 % less */
+#define HDR_MARK_HTICKS   ((NEC_HDR_MARK/CLK_TICKS)   + 40) /* approx.  7 % more */
+#define HDR_SPACE_LTICKS  ((NEC_HDR_SPACE/CLK_TICKS)  - 20) /* approx.  7 % less */
+#define HDR_SPACE_HTICKS  ((NEC_HDR_SPACE/CLK_TICKS)  + 20) /* approx.  7 % more */
+#define ONE_SPACE_LTICKS  ((NEC_ONE_SPACE/CLK_TICKS)  - 10) /* approx. 10 % less */
+#define ONE_SPACE_HTICKS  ((NEC_ONE_SPACE/CLK_TICKS)  + 10) /* approx. 10 % more */
+#define BIT_MARK_LTICKS   ((NEC_BIT_MARK/CLK_TICKS)   -  6) /* approx. 17 % less */
+#define BIT_MARK_HTICKS   ((NEC_BIT_MARK/CLK_TICKS)   +  6) /* approx. 17 % more */
+#define ZERO_SPACE_LTICKS ((NEC_ZERO_SPACE/CLK_TICKS) -  6) /* approx. 17 % less */
+#define ZERO_SPACE_HTICKS ((NEC_ZERO_SPACE/CLK_TICKS) +  6) /* approx. 17 % more */
+#define RPT_SPACE_LTICKS  ((NEC_RPT_SPACE/CLK_TICKS)  - 20) /* approx. 14 % less */
+#define RPT_SPACE_HTICKS  ((NEC_RPT_SPACE/CLK_TICKS)  + 20) /* approx. 14 % more */
 
 //------------------------------------------------------------------------------
-// Mark & Space matching functions
-//
-int  MATCH       (int measured, int desired) ;
-int  MATCH_MARK  (int measured_ticks, int desired_us) ;
-int  MATCH_SPACE (int measured_ticks, int desired_us) ;
-
-//------------------------------------------------------------------------------
-// Information for the Interrupt Service Routine
-//
-#define RAWBUF  101  // Maximum length of raw duration buffer
-
-typedef struct {
-	// The fields are ordered to reduce memory over caused by struct-padding
-	uint8_t       rcvstate;        // State Machine state
-	uint8_t       rawlen;          // counter of entries in rawbuf
-	unsigned int  timer;           // State timer, counts 50uS ticks.
-	unsigned int  rawbuf[RAWBUF];  // raw data
-	uint8_t       overflow;        // Raw buffer overflow occurred
-} irparams_t;
-
 // ISR State-Machine : Receiver States
+//------------------------------------------------------------------------------
 #define STATE_IDLE      2
 #define STATE_MARK      3
 #define STATE_SPACE     4
 #define STATE_STOP      5
 #define STATE_OVERFLOW  6
 
-//------------------------------------------------------------------------------
-// Pulse parms are ((X*50)-100) for the Mark and ((X*50)+100) for the Space.
-// First MARK is the one after the long gap
-// Pulse parameters in uSec
-//
-// Due to sensor lag, when received, Marks  tend to be 100us too long and
-//                                   Spaces tend to be 100us too short
-#define MARK_EXCESS    100
-
-// microseconds per clock interrupt tick
-#define USECPERTICK    50
-
-// Upper and Lower percentage tolerances in measurements
-#define TOLERANCE       50
-#define LTOL            (1.0 - (TOLERANCE/100.))
-#define UTOL            (1.0 + (TOLERANCE/100.))
-
-// Minimum gap between IR transmissions
-#define _GAP            20000
-#define GAP_TICKS       (_GAP/USECPERTICK)
-
-#define TICKS_LOW(us)   ((int)(((us)*LTOL/USECPERTICK)))
-#define TICKS_HIGH(us)  ((int)(((us)*UTOL/USECPERTICK + 1)))
-
-//------------------------------------------------------------------------------
-// IR detector output is active low
-//
-#define MARK   0
-#define SPACE  1
-
-//------------------------------------------------------------------------------
-// Results returned from the decoder
-//
-typedef struct _decode_results
-{
-		unsigned long          value;        // Decoded value [max 32-bits]
-		int                    bits;         // Number of bits in decoded value
-		volatile unsigned int  *rawbuf;      // Raw intervals in 50uS ticks
-		int                    rawlen;       // Number of records in rawbuf
-		int                    overflow;     // true if IR raw code too long
-		uint8_t                rcvstate;     // State Machine state
-} decode_results;
-
-// Decoded value for NEC when a repeat code is received
-#define REPEAT 0xFFFFFFFF
-
-// KEY values for the remote control
+//-----------------------------------------------------------------------
+// KEY values for remote control, used in ir_key() and handle_ir_command()
+//-----------------------------------------------------------------------
+#define IR_CHARS    "0123456789ULRDOAHX?"
 #define IR_0        (0x00)
 #define IR_1		(0x01)
 #define IR_2		(0x02)
@@ -135,6 +89,9 @@ typedef struct _decode_results
 #define IR_REPEAT   (0x11)
 #define IR_NONE     (0x12)
 
+//-----------------------------------------------------------------------
+// Raw 32 bits codes from IR receiver, stored in ir_result
+//-----------------------------------------------------------------------
 #define IR_CODE_0        (0x00FF4AB5)
 #define IR_CODE_1		 (0x00FF6897)
 #define IR_CODE_2		 (0x00FF9867)
@@ -154,25 +111,48 @@ typedef struct _decode_results
 #define IR_CODE_HASH     (0x00FF52AD)
 #define IR_CODE_REPEAT   (0xFFFFFFFF)
 
-#define IR_CHARS         "0123456789ULRDOAHX?"
+//-----------------------------------------------------------------------
+// States for ir_cmd_std in handle_ir_command()
+//-----------------------------------------------------------------------
+#define IR_CMD_IDLE      (0)
+#define IR_CMD_0         (1)
+#define IR_CMD_1         (2) /* Show version number for 5 seconds */
+#define IR_CMD_2         (3) /* Show last response from ESP8266 */
+#define IR_CMD_3         (4) /* Get Date & Time from ESP8266 NTP Server */
+#define IR_CMD_4         (5) /* Show DS3231 Temperature for 5 seconds */
+#define IR_CMD_5         (6) /* Set intensity of colors */
+#define IR_CMD_6         (7) /* Invert Blanking-Active signal */
+#define IR_CMD_7         (8) /* Enable Testpattern */
+#define IR_CMD_8         (9) /* Set blanking-begin time */
+#define IR_CMD_9        (10) /* Set blanking-end time */
+#define IR_CMD_HASH     (11) /* Show date & year for 10 seconds */
+#define IR_CMD_CURSOR   (12)
+#define IR_CMD_COL_CURSOR (13)
 
-#define NO_CMD			(0)
-#define CMD_MODE_ASTRIX	(1)
-#define CMD_MODE_HASH   (2)
-#define CMD_TIME		(3)
-#define TIME_EXEC		(4)
-#define CMD_DATE		(5)
-#define DATE_EXEC		(6)
+//-----------------------------------------------------------------------
+// Defines for show_date_IR variable
+//-----------------------------------------------------------------------
+#define IR_SHOW_TIME     (0) /* Default, show normal time */
+#define IR_SHOW_DATE     (1) /* Show day and month */
+#define IR_SHOW_YEAR     (2) /* Show year */
+#define IR_SHOW_TEMP     (3) /* Show DS3231 temperature */
+#define IR_SHOW_VER      (4) /* Show version number */
+#define IR_SHOW_ESP_STAT (5) /* Show last response from ESP8266: 1 = ok */
 
+//-----------------------------------------------------------------------
+// Defines for set_time_IR variable
+//-----------------------------------------------------------------------
+#define IR_NO_TIME      (0) /* Default option */
+#define IR_BB_TIME      (1) /* Show Blanking begin-time */
+#define IR_BE_TIME      (2) /* Show Blanking end-time */
 
 //------------------------------------------------------------------------------
 // Main routines for receiving IR
 //------------------------------------------------------------------------------
-void ir_init(void);
-void ir_isr(void);
-bool ir_decode(decode_results *results);
-bool ir_is_idle(void);
-void ir_resume(void);
-void ir_receive(void);
+bool    check_ticks(uint16_t val, uint16_t low, uint16_t high);
+bool    ir_decode_nec(void);
+uint8_t ir_key(void);
+void    handle_ir_command(uint8_t key);
+void    ir_task(void);
 
 #endif

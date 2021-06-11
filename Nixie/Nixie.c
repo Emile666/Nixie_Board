@@ -13,10 +13,9 @@
 #include "bme280.h"
 #include "eep.h"
 
-bool		  test_nixies = 0;			// S3 command / IR #9 command
+char          nixie_ver[] = "Nixie New HW v0.32\n";
+bool		  test_nixies = false;	    // S3 command / IR #9 command
 bool          relay_status;             // Relay status, on (1) or off (0)
-bool          relay_on_IR = false;      // Request from remote-control to turn relay on
-bool          relay_off_IR = false;     // Request from remote-control to turn relay off
 uint8_t       cnt_50usec  = 0;			// 50 usec. counter
 unsigned long t2_millis   = 0UL;		// msec. counter
 uint32_t      bme280_press = 0.0;		// Pressure E-1 mbar
@@ -28,9 +27,6 @@ uint8_t       blank_begin_h   = 0;
 uint8_t       blank_begin_m   = 0;
 uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
-
-extern bool time_only;				  // Toggles between time and date only with no RGB to all task shown
-extern bool display_60sec;			  // Display time, date and sensor outputs for 60 sec.
 
 uint8_t rgb_pattern = FIXED;		  // RGB color mode: [OFF, RANDOM, DYNAMIC, FIXED]
 uint8_t fixed_rgb_colour = CYAN;	  // RGB colour variable used in Nixie.c
@@ -50,7 +46,24 @@ uint8_t       led_b[NR_LEDS];         // Array with 8-bit blue colour for all WS
 bool          hv_relay_sw;            // switch for hv_relay
 bool          hv_relay_fx;            // fix for hv_relay
 
-extern char   rs232_inbuf[];          // RS232 input buffer
+bool     set_col_white   = false; // true = esp8266 time update was successful
+bool     blanking_invert = false; // Invert blanking-active IR-command
+bool     enable_test_IR  = false; // Enable Test-pattern IR-command
+bool     last_esp8266    = false; // true = last esp8266 command was successful
+uint8_t  esp8266_std    = ESP8266_INIT;         // update time from ESP8266 every 18 hours
+uint16_t esp8266_tmr    = ESP8266_SECONDS - 30; // ESP8266 timer, update 30 sec. after power-up
+uint8_t  tmr1_std = STATE_IDLE;  // FSM for reading IR codes
+uint16_t rawbuf[100];            // buffer with clock-ticks from IR-codes
+uint8_t  rawlen     = 0;         // number of bits read from IR
+uint16_t prev_ticks = 0;         // previous value of ticks, used for bit-length calc.
+uint8_t  show_date_IR = IR_SHOW_TIME; // What to display on the 7-segment displays
+uint8_t  set_time_IR  = IR_NO_TIME;   // Show normal time or blanking begin/end time
+bool     set_color_IR = false;        // true = set color intensity via IR
+
+extern char     rs232_inbuf[];      // RS232 input buffer
+extern bool     ir_rdy;             // flag for ir_task() that new IR code is received
+extern uint8_t  time_arr[];         // Array for changing time or intensity with IR
+extern uint8_t  time_arr_idx;       // Index into time_arr[]
 
 //---------------------------------------------------------------------------
 // Copy to hardware PCB v0.21: MSB (bit 39) first --> LSB (bit 00)
@@ -98,23 +111,88 @@ void delay_msec(uint16_t ms)
 } // delay_msec()
 
 /*------------------------------------------------------------------------
-  Purpose  : This is the Timer-Interrupt routine which runs every 50 usec. 
-             (f=20 kHz). It is used by the task-scheduler and the IR-receiver.
+  Purpose  : This is the Timer-Interrupt routine which runs every msec. 
+             (f=1 kHz). It is used by the task-scheduler.
   Variables: -
   Returns  : -
   ------------------------------------------------------------------------*/
 ISR(TIMER2_COMPA_vect)
 {
-	PORTB |= TIME_MEAS; // Time Measurement
-	if (++cnt_50usec > 19) 
-	{
-		scheduler_isr(); // call the ISR routine for the task-scheduler
-		t2_millis++;     // update millisecond counter
-		cnt_50usec = 0;
-	} // if	
-	ir_isr();            // call the ISR routine for the IR-receiver
+	PORTB |= TIME_MEAS;  // Time Measurement
+	scheduler_isr();     // call the ISR routine for the task-scheduler
+	t2_millis++;         // update millisecond counter
 	PORTB &= ~TIME_MEAS; // Time Measurement
 } // ISR()
+
+/*------------------------------------------------------------------
+  Purpose  : This is the State-change interrupt routine for PORTB. 
+             It interrupts whenever a change on IR_RCV is detected.
+  Variables: -
+  Returns  : -
+  ------------------------------------------------------------------*/
+ISR (PCINT0_vect)
+{
+    uint16_t diff_ticks;
+    uint16_t ticks = tmr1_val(); // counts at f = 62.5 kHz, T = 16 usec.
+    uint8_t  ir_rcvb = PINB & IR_RCV;
+	
+    if (ticks < prev_ticks)
+         diff_ticks = ~prev_ticks + ticks;
+    else diff_ticks = ticks  - prev_ticks;
+    if (ir_rcvb) // copy IR-signal to debug output
+         PORTB |=  IR_LED;
+    else PORTB &= ~IR_LED;
+    switch (tmr1_std)
+    {
+	    case STATE_IDLE:
+	    if (!ir_rcvb)
+	    {   // falling edge
+		    rawbuf[0] = ticks;
+		    rawlen    = 1;
+		    tmr1_std  = STATE_MARK;
+	    } // if
+	    break;
+	    case STATE_MARK: // A mark is a 0 for the VS1838B
+	    if (ir_rcvb)
+	    {   // rising edge, end of mark
+		    if (rawlen < 99)
+		    {
+			    rawbuf[rawlen++] = diff_ticks;
+			    tmr1_std         = STATE_SPACE;
+		    } // if
+		    else
+		    {   // overflow
+			    ir_rdy   = true;
+			    tmr1_std = STATE_STOP;
+		    } // else
+	    } // if
+	    break;
+	    case STATE_SPACE:
+	    if (!ir_rcvb)
+	    {   // falling edge, end of space
+		    if (diff_ticks > 1250) // 1250 = 20 msec. min. gap between transmissions
+		    {   // long space received, ready to process everything
+			    ir_rdy    = true;
+			    tmr1_std  = STATE_STOP;
+		    } // if
+		    else if (rawlen < 99)
+		    {
+			    rawbuf[rawlen++] = diff_ticks;
+			    tmr1_std         = STATE_MARK;
+		    } // if
+		    else
+		    {   // overflow
+			    ir_rdy   = true;
+			    tmr1_std = STATE_STOP;
+		    } // else
+	    } // if
+	    break;
+	    case STATE_STOP:
+	    // remain in this state unless ir_task() resets this
+	    break;
+    } // switch
+    prev_ticks = ticks; // save ticks value	
+} // ISR(PCINT0_vect)
 
 /*-----------------------------------------------------------------------------
   Purpose  : This routine sends one byte to the WS2812B LED-string.
@@ -587,7 +665,9 @@ bool blanking_active(Time p)
 	
 	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
 	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
-	return ((b >= e) && ((x >= b) || (x <= e))) || ((x >= b) && (x < e)); 
+	bool blanking = ((b >= e) && ((x >= b) || (x <= e))) || ((x >= b) && (x < e));
+	if (blanking_invert) blanking = !blanking;
+	return blanking;
 } // blanking_active()
 
 /*------------------------------------------------------------------------
@@ -691,7 +771,60 @@ void dec_point_clr(uint8_t dp)
 } // dec_point_clr()
 
 /*------------------------------------------------------------------------
-  Purpose  : This task decide what to display on the Nixie Tubes.
+  Purpose  : This function updates the DS3231 with the time from the
+             ESP8266 NTP Server. It does this every 12 hours.
+			 This function is called every second from display_task().
+  Variables: -
+  Returns  : -
+  ------------------------------------------------------------------------*/
+void update_esp8266_time(void)
+{
+    static uint8_t retry_tmr;
+    static uint8_t retries = 0;
+    
+    switch (esp8266_std)
+    {
+	    case ESP8266_INIT:
+			if (++esp8266_tmr >= ESP8266_SECONDS) // 12 hours * 60 min. * 60 sec.
+			{
+				last_esp8266 = false; // reset status
+				retries      = 0;     // init. number of retries
+				esp8266_std  = ESP8266_UPDATE;
+			} // if
+	    break;
+		
+	    case ESP8266_UPDATE:
+			retry_tmr    = 0; // init. retry timer
+			xputs("e0\n");    // update time from ESP8266
+			esp8266_std  = ESP8266_RETRY;
+	    break;
+		
+	    case ESP8266_RETRY:
+			if (last_esp8266 == true)
+			{   // valid e0 response back, set by command_interpreter()
+				esp8266_std  = ESP8266_INIT;
+			} // if
+			else if (++retries > 5)
+			{   // No response from esp8266 after 5 retries, stop trying
+				esp8266_std = ESP8266_INIT;
+				esp8266_tmr = 0; // reset timer here and try again in 12 hours
+			} // else if
+			else if (++retry_tmr >= 60)
+			{   // retry 1 minute later
+				retries++;
+				esp8266_std = ESP8266_UPDATE; // retry once more
+			} // else if
+	    break;
+		
+	    default:
+			esp8266_tmr = 0;
+			esp8266_std = ESP8266_INIT;
+	    break;
+    } // switch
+} // update_esp8266_time()
+
+/*------------------------------------------------------------------------
+  Purpose  : This task decides what to display on the Nixie Tubes.
 			 Called once every second.
   Variables: nixie_bits (32 bits)
   Returns  : -
@@ -699,27 +832,41 @@ void dec_point_clr(uint8_t dp)
 void display_task(void)
 {
 	Time     p; // Time struct
-	uint8_t  c,x,y,	cnt_60sec = 0;
+	uint8_t  c,x,y;
 	uint16_t r;
-	
+	static   uint8_t col_white_tmr = 0;
+    static   bool    blink     = false;
+		
 	nixie_bits  = 0x00000000; // clear all bits
 	nixie_bits8 = 0x00;       // clear upper 8 bits
-	ds3231_gettime(&p);
+	ds3231_gettime(&p);       // get time from DS32231 RTC 
+	update_esp8266_time();    // try to get a time from ESP8266 every 12 hours
 	display_time = false;     // start with no-time on display
-	
+	if (set_col_white)
+	{   // show white color for 2 seconds
+		rgb_pattern   = SET_WIT;
+		if (++col_white_tmr > 2)
+		{
+			col_white_tmr = 0;
+			set_col_white = false;
+		} // if
+	} // else
+	else rgb_pattern = FIXED;
+
 	switch (rgb_pattern)
 	{
 		case RANDOM:  c = rand() % 8;       break;
 		case DYNAMIC: c = p.sec % 8;        break;
 		case FIXED:   c = fixed_rgb_colour; break;
+		case SET_WIT: c = WHITE;            break;
 		case OFF:
 		default:      c = BLACK;            break;   
 	} // switch
 	set_rgb_colour(c);
 	
 	if (test_nixies) 
-	{
-		ftest_nixies(); // S3 command
+	{   // S3 command or IR 7 command (60 sec.)
+		ftest_nixies(); 
 		return;
 	} // if	
 	else if (hv_relay_sw)
@@ -730,35 +877,70 @@ void display_task(void)
 	} // else if
 	else if (blanking_active(p))
 	{
-		 if (display_60sec)
-		 {
-			 if (++cnt_60sec > 59)
-			 {
-				 cnt_60sec     = 0;     // reset timer
-				 display_60sec = false; // reset trigger
-			 } // if
-			 PORTB |= HV_ON; // relay on for 60 sec.
-		 } // if
-		 else if (relay_on_IR)
-			  PORTB |=  HV_ON; // relay on request from IR remote
-		 else PORTB &= ~HV_ON; // relay off
+		PORTB &= ~HV_ON; // relay off
 	} // else if
 	else 
 	{	// blanking is not active
-		if (relay_off_IR)
-			 PORTB &= ~HV_ON; // relay off
-		else PORTB |=  HV_ON; // relay on if !test && !hv_relay_sw && !blanking_active && !relay_off_request_IR
+		PORTB |=  HV_ON; // relay on
 	} // else	
-	if (time_only)	// *0 IR remote
-	     y = 0;
-	else y = p.sec; // if
 	
-	switch (y)
+	if (show_date_IR == IR_SHOW_VER)
+	{	// Show version info
+		nixie_bits = time_arr[POS0];
+		nixie_bits <<= 4;
+		nixie_bits |= time_arr[POS1];
+		nixie_bits <<= 4;	
+		nixie_bits |= time_arr[POS2];
+		nixie_bits <<= 4;
+		clear_nixie(1);
+		clear_nixie(2);
+		clear_nixie(6);
+		dec_point_set(DP_SH_LEFT); // set decimal point
+	} // if
+	else if (show_date_IR == IR_SHOW_ESP_STAT)
+	{	// Show response from ESP8266 NTP Server
+		nixie_bits = time_arr[POS0];
+		nixie_bits <<= 4;
+		for (uint8_t i = POS1; i <= POS5; i++)
+		{
+			nixie_bits |= time_arr[i];
+			nixie_bits <<= 4;
+		} // for i	
+		if (time_arr[POS5] == 1)
+		     set_rgb_colour(GREEN); // last response ok
+		else set_rgb_colour(RED);   // last response not ok
+		clear_nixie(6);
+	} // else if
+	else if (set_time_IR != IR_NO_TIME)
+	{	// Set blanking begin/end time
+		nixie_bits = time_arr[POS0];
+		nixie_bits <<= 4;
+		for (uint8_t i = POS1; i <= POS3; i++)
+		{
+			nixie_bits |= time_arr[i];
+			nixie_bits <<= 4;
+		} // for i
+		if (blink)
+		{   // blinking color
+			switch (time_arr_idx)
+			{
+				case POS0: nixie_bits |= 0x000F0000; break;
+				case POS1: nixie_bits |= 0x0000F000; break;
+				case POS2: nixie_bits |= 0x00000F00; break;
+				default  : nixie_bits |= 0x000000F0; break;
+			} // switch
+		} // if
+		dec_point_set(DP_ML_LEFT); // set decimal point
+		clear_nixie(1);
+		clear_nixie(6);
+        blink = !blink;   // toggle blinking
+	} // else if
+	else switch (p.sec)
 	{ 
 		case 15: // display date & month
-			nixie_bits = encode_to_bcd(p.date);
+			nixie_bits = encode_to_bcd(p.date); // pos. 1 and 2
 			nixie_bits <<= 12;
-			nixie_bits |= encode_to_bcd(p.mon);
+			nixie_bits |= encode_to_bcd(p.mon); // pos. 4 and 5
 			nixie_bits <<= 4;
 			clear_nixie(3);
 			clear_nixie(6);
@@ -812,26 +994,6 @@ void display_task(void)
 				set_rgb_colour(BLUE);
 			} // if
 			break;
-		
-		//case 37: // display dewpoint
-		//case 38:
-			//x = dht22_dewp / 10;
-			//nixie_bits = encode_to_bcd(x);
-			//nixie_bits <<= 4;
-			//nixie_bits |= (dht22_dewp - 10 * x);
-			//nixie_bits |= RIGHT_DP5;
-			//clear_nixie(1);
-			//clear_nixie(2);
-			//clear_nixie(3);
-			//
-			//if (default_rgb_pattern == true	)
-			//}
-			//   rgb_colour = CYAN;
-			//   PORTC &=~(0x0F);
-			//   PORTC |= (HUMIDITYSYMBOL | LED_IN19A);
-			//}
-			//
-		//break;			
 		
 		case 40: // display temperature
 		case 41:
@@ -916,92 +1078,41 @@ void display_task(void)
 } // display_task()
 
 /*------------------------------------------------------------------------
-Purpose  : Set the correct time in the DS3231 module via IRremote
+Purpose  : This function initializes Timer 1 for a 62.5 kHz (16 usec.)
+           timer, which is needed for time-measurement of the IR library.
 Variables: -
 Returns  : -
 ------------------------------------------------------------------------*/
-void set_nixie_timedate(uint8_t x, uint8_t y, char z)
+void init_timer1(void)
 {
-	switch (y)
-	{
-		case 0:
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			clear_nixie(4);
-			clear_nixie(5);
-			break;
-		
-		case 1:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			clear_nixie(4);
-			break;
+	// Set Timer 1 to 62.5 kHz interrupt frequency
+	TCCR1A = 0x00;  // normal mode
+	TCCR1B = 0x04;  // set pre-scaler to 256 (fclk = 62.5 kHz)
+	TCNT1  =  0;    // start counting at 0
+} // init_timer1()
 
-		case 2:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);
-			clear_nixie(3);
-			break;
-		
-		case 3:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);
-			clear_nixie(2);		
-			break;
-
-		case 4:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			clear_nixie(1);		
-			break;
-		
-		case 5:
-			nixie_bits <<= 4;
-			nixie_bits |= x;
-			break;
-		
-		case 6:
-			nixie_bits = 0x00000000;
-			PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-			break;
-	} //switch
-
-	nixie_bits8 = 0x00; // Clear LEFT_DP1 t/m LEFT_DP4
-	
-	if (z == 'T')
-	{
-		nixie_bits  |= LEFT_DP5;
-		nixie_bits8 |= LEFT_DP3;
-		set_rgb_colour(YELLOW);
-	} // if
-	else if (z == 'D')
-	{
-		nixie_bits  |= LEFT_DP5;
-		nixie_bits8 |= LEFT_DP3;
-		set_rgb_colour(GREEN);
-	} // else if
-} // set_nixie_timedate()
+/*------------------------------------------------------------------
+  Purpose  : This function reads the value of TMR1 which runs at 62.5 kHz
+  Variables: -
+  Returns  : the value from TMR1
+  ------------------------------------------------------------------*/
+uint16_t tmr1_val(void)
+{
+	return TCNT1;
+} // tmr1_val()
 
 /*------------------------------------------------------------------------
-Purpose  : This function initializes Timer 2 for a 20 kHz (50 usec.)
-           signal, because the IR library needs a 50 usec interrupt.
+Purpose  : This function initializes Timer 2 for 1 kHz (1 msec.)
+           signal, needed for the scheduler interrupt.
 Variables: -
 Returns  : -
 ------------------------------------------------------------------------*/
 void init_timer2(void)
 {
-	// Set Timer 2 to 20 kHz interrupt frequency: ISR(TIMER2_COMPA_vect)
+	// Set Timer 2 to 1 kHz interrupt frequency: ISR(TIMER2_COMPA_vect)
 	TCCR2A |= (0x01 << WGM21); // CTC mode, clear counter on TCNT2 == OCR2A
-	TCCR2B =  (0x01 << CS21);  // set pre-scaler to 8 (fclk = 2 MHz)
-	OCR2A  =  99;    // this should set interrupt frequency to 20 kHz
+	TCCR2B =  (0x01 << CS22) | (0x01 << CS20); // set pre-scaler to 128
+	OCR2A  =  124;   // this should set interrupt frequency to 1000 Hz
 	TCNT2  =  0;     // start counting at 0
 	TIMSK2 |= (0x01 << OCIE2A);   // Set interrupt on Compare Match
 } // init_timer2()
@@ -1015,14 +1126,26 @@ Returns  : -
 void init_ports(void)
 {
 	DDRB  &= ~(IR_RCV); // clear bits = input
-	PORTB &= ~(IR_RCV); // disable pull-up resistors
-	DDRB  |=  (TIME_MEAS | WS2812_DI | HV_ON); // set bits = output
-	PORTB &= ~(TIME_MEAS | WS2812_DI | HV_ON); // init. outputs to 0
+	PORTB |=  (IR_RCV); // enable pull-up resistor
+	DDRB  |=  (TIME_MEAS | WS2812_DI | HV_ON | IR_LED); // set bits = output
+	PORTB &= ~(TIME_MEAS | WS2812_DI | HV_ON | IR_LED); // init. outputs to 0
+
+	PCICR |= (1<<PCIE0);   // Enable pin change interrupt 0
+	PCMSK0 |= (1<<PCINT3); // Enable PCINT3 (PB3) for IR_RCV
+
 	DDRC  |=  (0x0F);   // set bits C3 t/m C0 as output
 	PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+
 	DDRD  |=  (SDIN | SHCP | STCP); // set bits = output
 	PORTD &= ~(SDIN | SHCP | STCP); // set outputs to 0
 } // init_ports()
+
+int freeRam (void)
+{
+	extern int __heap_start, *__brkval;
+	int v;
+	return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
+} // freeRam()
 
 /*------------------------------------------------------------------------
 Purpose  : main() function: Program entry-point, contains all init. functions 
@@ -1034,8 +1157,8 @@ int main(void)
 {
 	char s[20];
 	
-	init_timer2(); // init. timer for scheduler and IR-receiver 
-	ir_init();     // init. IR-library
+	init_timer1(); // init. timer for IR-measurements 
+	init_timer2(); // init. timer for scheduler
 	i2c_init(SCL_CLK_400KHZ); // Init. I2C HW with 400 kHz clock
 	init_ports();  // init. PORTB, PORTC and PORTD port-pins 	
 	srand(59);	   // Initialize random generator from 0 - 59
@@ -1048,18 +1171,20 @@ int main(void)
 	// Add tasks for task-scheduler here
 	add_task(display_task ,"Display",  0, 1000); // What to display on the Nixies.
 	add_task(update_nixies,"Update" ,100,   50); // Run Nixie Update every  50 msec.
-	add_task(ir_receive   ,"IR_recv",150,  500); // Run IR-process   every 500 msec.
+	add_task(ir_task      ,"IR_recv",150,  100); // Run IR-process   every 100 msec.
 	add_task(bme280_task  ,"BME280" ,250, 5000); // Run BMP180 sensor process every 5 seconds
 	
 	sei(); // set global interrupt enable, start task-scheduler
 	check_and_init_eeprom();  // Init. EEPROM
 	read_eeprom_parameters();
 	dst_active = eeprom_read_byte(EEPARB_DST); // read from EEPROM
-	xputs("Nixie board v0.31, Emile, Martijn, Ronald\n");
+	xputs(nixie_ver);
 	xputs("Blanking from ");
 	sprintf(s,"%02d:%02d to %02d:%02d\n",blank_begin_h,blank_begin_m,blank_end_h,blank_end_m);
 	xputs(s);
-	
+	sprintf(s,"Free RAM:%d bytes\n",freeRam());
+	xputs(s);                    // print amount of free RAM
+
 	// Main routine 
 	while(1)
 	{   // Run all scheduled tasks here

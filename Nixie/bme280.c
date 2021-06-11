@@ -250,8 +250,8 @@ int32_t bme280_temperature(void)
 	var2   = (((((adc_T >> 4) - ((int32_t)dig_T1)) * ((adc_T >> 4) - ((int32_t)dig_T1))) >> 12) * ((int32_t)dig_T3)) >> 14;
 	t_fine = var1 + var2;
     T      = (t_fine * 5 + 128) >> 8;	
-	sprintf(s2,"T = %ld\n",T);
-	xputs(s2);
+	//sprintf(s2,"T = %ld\n",T);
+	//xputs(s2);
 	return T;
 } // bme280_temperature()
 
@@ -304,8 +304,8 @@ uint32_t bme280_pressure(void)
 	var2 = (((int32_t)(p>>2)) * ((int32_t)dig_P8))>>13;
 	p = (uint32_t)((int32_t)p + ((var1 + var2 + dig_P7) >> 4));
 	p /= 10; // round to 1 decimal
-	sprintf(s2,"P = %ld\n",p);
-	xputs(s2);
+	//sprintf(s2,"P = %ld\n",p);
+	//xputs(s2);
 	return p;
 } // bme280_pressure()
 
@@ -344,6 +344,6 @@ uint32_t bme280_humidity(void)
 	v_x1_u32r = (v_x1_u32r > 419430400 ? 419430400 : v_x1_u32r);
 	H  = (uint32_t)(v_x1_u32r >> 12);
 	H  = H * 125 >> 7; // * 1000 / 1024 = 125 / 128
-	sprintf(s2,"H = %ld\n",H);
-	xputs(s2);
+	//sprintf(s2,"H = %ld\n",H);
+	//xputs(s2);
 	return H;} // bme280_humidity()
