@@ -22,13 +22,15 @@
 
 char    rs232_inbuf[USART_BUFLEN];     // buffer for RS232 commands
 uint8_t rs232_ptr = 0;                 // index in RS232 buffer
-extern  uint8_t test_nixies;
+extern  uint8_t rgb_colour;
+extern  bool test_nixies;
+extern  char nixie_ver[];
+
 extern  uint8_t blank_begin_h;
 extern  uint8_t blank_begin_m;
 extern  uint8_t blank_end_h;
 extern  uint8_t blank_end_m;
 extern  uint8_t wheel_effect;
-
 extern  uint8_t col_time;
 extern  uint8_t col_date;
 extern  uint8_t col_temp;
@@ -36,7 +38,15 @@ extern  uint8_t col_humi;
 extern  uint8_t col_dewp;
 extern  uint8_t col_pres;
 extern  uint8_t col_roll;
-extern  uint8_t rgb_pattern;           // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
+extern  bool    hv_relay_sw;  // switch for hv_relay
+extern  bool    hv_relay_fx;  // fix for hv_relay
+extern  uint8_t rgb_pattern;  // RGB color mode: [RANDOM, DYNAMIC, FIXED, OFF]
+extern  bool    dst_active;   // true = Daylight Saving Time active
+extern  bool    set_col_white;   // true = esp8266 time update was successful
+extern  bool    blanking_invert; // Invert blanking-active IR-command
+extern  bool    enable_test_IR;  // Enable Test-pattern IR-command
+extern  bool    last_esp8266;    // true = last esp8266 command was successful
+extern  uint16_t esp8266_tmr;    // timer for updating ESP8266
 
 /*-----------------------------------------------------------------------------
   Purpose  : Non-blocking RS232 command-handler via the USB port
@@ -93,98 +103,96 @@ void print_dow(uint8_t dow)
 uint8_t execute_single_command(char *s)
 {
    uint8_t  num  = atoi(&s[1]); // convert number in command (until space is found)
-   uint8_t  val;
+   uint8_t  val; 
    uint8_t  rval = NO_ERR;
    char     s2[40]; // Used for printing to RS232 port
    char     *s1;
-   uint8_t  d,m,h,sec;
+   uint8_t  d,mo,h,mi,sec;
    uint16_t y;
    Time     p;
    int16_t  temp;
+   const char sep[] = ":-.";
    
    switch (s[0])
    {
-				 
-	   case 'c': // Set default colours of RGB LED [0..6]
-				 val = atoi(&s[3]);
-				 if ((num > 6) || (val > 7))
-					rval = ERR_NUM;
-				 else
+	   case 'c': // Set all Colours
+				 val = atoi(&s[3]); // convert number until EOL
+				 switch (num)
 				 {
-					eeprom_write_byte(EEPARB_COL_TIME + (num << 1),val);
-					switch (num)
-					{
-						case 0: xputs("col_time=");
-								col_time = val;
-								break;
-						case 1: xputs("col_date=");
-								col_date = val;
-								break;
-						case 2: xputs("col_temp=");
-								col_temp = val;
-								break;
-						case 3: xputs("col_humi=");
-								col_humi = val;
-								break;
-						case 4: xputs("col_dewp=");
-								col_dewp = val;
-								break;
-						case 5: xputs("col_pres=");
-								col_pres = val;
-								break;
-						case 6: xputs("col_roll=");
-								col_roll = val;
-								break;
-					} // switch
-				    switch (val)
-				    {
-					    case 0: xputs("black\n");   break;
-					    case 1: xputs("red\n")  ;   break;
-					    case 2: xputs("green\n");   break;
-					    case 3: xputs("yellow\n");  break;
-					    case 4: xputs("blue\n");    break;
-					    case 5: xputs("magenta\n"); break;
-					    case 6: xputs("cyan\n");    break;
-					    case 7: xputs("white\n");   break;
-				    } // switch
-			    } // else
-			    break;
-	   
+					 case 0: // Colour for Time display
+					 col_time = val;
+					 eeprom_write_byte(EEPARB_COL_TIME,val);
+					 break;
+					 case 1: // Colour for Date & Year display
+					 col_date = val;
+					 eeprom_write_byte(EEPARB_COL_DATE,val);
+					 break;
+					 case 2: // Colour for Temperature display
+					 col_temp = val;
+					 eeprom_write_byte(EEPARB_COL_TEMP,val);
+					 break;
+					 case 3: // Colour for Humidity display
+					 col_humi = val;
+					 eeprom_write_byte(EEPARB_COL_HUMI,val);
+					 break;
+					 case 4: // Colour for Dew-point display
+					 col_dewp = val;
+					 eeprom_write_byte(EEPARB_COL_DEWP,val);
+					 break;
+					 case 5: // Colour for Pressure display
+					 col_pres = val;
+					 eeprom_write_byte(EEPARB_COL_PRES,val);
+					 break;
+					 case 6: // Colour for seconds rollover display
+					 col_roll = val;
+					 eeprom_write_byte(EEPARB_COL_ROLL,val);
+					 break;
+					 default: rval = ERR_NUM;
+					 break;
+				 } // switch
+				 sprintf(s,"col[%d]=%d\n",num,val); xputs(s);
+				 break;
+
 	   case 'd': // Set Date and Time
 				 switch (num)
 				 {
-					 case 0: // Set Date
-							s1 = strtok(&s[3],":-");
+					case 0: // Set Date
+							s1 = strtok(&s[3],sep);
 							d  = atoi(s1);
-							s1 = strtok(NULL ,":-");
-							m  = atoi(s1);
-							s1 = strtok(NULL ,":-");
+							s1 = strtok(NULL ,sep);
+							mo = atoi(s1);
+							s1 = strtok(NULL ,sep);
 							y  = atoi(s1);
 							xputs("Date: ");
-							print_dow(ds3231_calc_dow(d,m,y));
-							sprintf(s2," %02d-%02d-%d\n",d,m,y);
+							print_dow(ds3231_calc_dow(d,mo,y));
+							sprintf(s2," %02d-%02d-%d\n",d,mo,y);
 							xputs(s2);
-							ds3231_setdate(d,m,y); // write to DS3231 IC
+							ds3231_setdate(d,mo,y); // write to DS3231 IC
 							break;
-					 case 1: // Set Time
-							s1 = strtok(&s[3],":-.");
+							
+					case 1: // Set Time
+							s1 = strtok(&s[3],sep);
 							h  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
-							m  = atoi(s1);
-							s1 = strtok(NULL ,":-.");
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							s1 = strtok(NULL ,sep);
 							sec= atoi(s1);
-							sprintf(s2,"Time: %02d:%02d:%02d\n",h,m,sec);
+							sprintf(s2,"Time: %02d:%02d:%02d\n",h,mi,sec);
 							xputs(s2);
-							ds3231_settime(h,m,sec); // write to DS3231 IC
+							ds3231_settime(h,mi,sec); // write to DS3231 IC
 							break;
-					 case 2: // Get Date & Time
+							
+					case 2: // Get Date & Time
 							 ds3231_gettime(&p);
 							 xputs("DS3231: ");
 							 print_dow(p.dow);
-							 sprintf(s2," %02d-%02d-%d, %02d:%02d.%02d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+							 sprintf(s2," %02d-%02d-%d, %02d:%02d:%02d",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+							 xputs(s2);
+							 sprintf(s2," dst:%d, blanking:%d\n", dst_active, blanking_active(p));
 							 xputs(s2);
 							 break;
-					 case 3: // Get Temperature
+							 
+					case 3: // Get Temperature
 							 temp = ds3231_gettemp();
 							 sprintf(s2,"DS3231: %d.",temp>>2);
 							 xputs(s2);
@@ -196,72 +204,112 @@ uint8_t execute_single_command(char *s)
 								 case 3: xputs("75 °C\n"); break;
 							 } // switch
 							 break;
-					 case 4: // Set Start-Time for blanking Nixies
-							 s1 = strtok(&s[3],":-.");
-							 h  = atoi(s1);
-							 s1 = strtok(NULL ,":-.");
-							 m  = atoi(s1);
-							 if ((h < 24) && (m < 60))
-							 {
+							 
+					case 4: // Set Start-Time for blanking Nixies
+							s1 = strtok(&s[3],sep);
+							h  = atoi(s1);
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							if ((h < 24) && (mi < 60))
+							{
 								blank_begin_h = h;
-								blank_begin_m = m;
-								write_eeprom_parameters(); 
-								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,m);
+								blank_begin_m = mi;
+								eeprom_write_byte(EEPARB_HR1 ,blank_begin_h);
+								eeprom_write_byte(EEPARB_MIN1,blank_begin_m);
+								sprintf(s2,"Start-Time for blanking Nixies: %02d:%02d\n",h,mi);
 								xputs(s2);
-							 } // if
-							 break;
-					 case 5: // Set End-Time for blanking Nixies
-							 s1 = strtok(&s[3],":-.");
-							 h  = atoi(s1);
-							 s1 = strtok(NULL ,":-.");
-							 m  = atoi(s1);
-							 if ((h < 24) && (m < 60))
-							 {
-								 blank_end_h = h;
-								 blank_end_m = m;
-								 write_eeprom_parameters();
-								 sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,m);
-								 xputs(s2);
-							 } // if
-							 break;
+							} // if
+							break;
+							
+					case 5: // Set End-Time for blanking Nixies
+							s1 = strtok(&s[3],sep);
+							h  = atoi(s1);
+							s1 = strtok(NULL ,sep);
+							mi = atoi(s1);
+							if ((h < 24) && (mi < 60))
+							{
+								blank_end_h = h;
+								blank_end_m = mi;
+								eeprom_write_byte(EEPARB_HR2 ,blank_end_h);
+								eeprom_write_byte(EEPARB_MIN2,blank_end_m);
+								sprintf(s2,"End-Time for blanking Nixies: %02d:%02d\n",h,mi);
+								xputs(s2);
+							} // if
+							break;		 
+							 
 					 default: rval = ERR_NUM;
 							  break;
 				 } // switch
 				 break;
 				 
-	   case 'e': // E0: reset EEPROM
-				 if (num > 0)
-				 rval       = ERR_NUM;
-				 else 
-				 {
-					 eeprom_write_byte(EEPARB_INIT, NO_INIT); // Eeprom init. flag;
-					 xputs("EEPROM reset\n");
-				 } // else					
+        case 'e': // The e commands are responses back from the ESP8266 NTP Server
+        // Possible response: "e0 26-05-2021.15:55:23"
+        switch (num)
+        {
+	        case 0: // E0 = Get Date & Time from the ESP8266
+	        s1 = strtok(&s[3],sep);
+	        d  = atoi(s1);
+	        s1 = strtok(NULL ,sep);
+	        mo = atoi(s1);
+	        s1 = strtok(NULL ,sep);
+	        y  = atoi(s1);
+	        // Second part is the time from the ESP8266
+	        s1 = strtok(NULL,sep);
+	        h  = atoi(s1);
+	        if (dst_active)
+	        {
+		        if (h == 23)
+		        h = 0;
+		        else h++;
+	        } // if
+	        s1  = strtok(NULL ,sep);
+	        mi  = atoi(s1);
+	        s1  = strtok(NULL ,sep);
+	        sec = atoi(s1);
+	        if (sec == 59) // add 1 second for the transmit delay
+	        sec = 0;
+	        else sec++;
+	        if (y > 2020)
+	        {   // Valid Date & Time received
+		        ds3231_setdate(d,mo,y);   // write to DS3231 IC
+		        ds3231_settime(h,mi,sec); // write to DS3231 IC
+		        last_esp8266 = true;      // response was successful
+		        set_col_white = true;     // show briefly on display
+		        esp8266_tmr = 0;          // Reset update timer
+	        } // if
+	        else last_esp8266 = false;   // response not successful
+	        xputs("Date: ");
+	        print_dow(ds3231_calc_dow(d,mo,y));
+	        sprintf(s2," %d-%d-%d ",d,mo,y);
+	        xputs(s2);
+	        sprintf(s2,"Time: %d:%d:%d\n",h,mi,sec);
+	        xputs(s2);
+	        break;
+        } // switch
+        break;
+
+	   case 'l': // Set RGB LED [0..7]
+				 if (num > 7) 
+				      rval       = ERR_NUM;
+				 else rgb_colour = num;
 				 break;
 
-	   case 'r': // Set rgb_pattern
-				 if (num > FIXED)
-					rval = ERR_NUM;
-				 else
+	   case 'm': // Set RGB mode command [0=OFF, 1=RANDOM, 2=DYNAMIC, 3=FIXED]
+				 if (num > 4)
+				      rval = ERR_NUM;
+				 else if (num == 4)
 				 {
-					rgb_pattern = num;
-					eeprom_write_byte(EEPARB_RGB_PATT,rgb_pattern);
-					xputs("rgb_pattern = ");
-					switch (rgb_pattern)
-					{
-						case OFF    : xputs("OFF\n");     break;
-						case RANDOM : xputs("RANDOM\n");  break;
-						case DYNAMIC: xputs("DYNAMIC\n"); break;
-						case FIXED  : xputs("FIXED\n");   break;
-					} // switch
-				 } // else
+					 sprintf(s2,"rgb_pattern=%d\n",rgb_pattern);
+					 xputs(s2);
+				 } // else if
+				 else rgb_pattern = num;
 				 break;
-
+				 
 	   case 's': // System commands
 				 switch (num)
 				 {
 					 case 0: // revision
-							 xputs("Nixie board v0.2\n");
+							 xputs(nixie_ver);
 							 break;
 					 case 1: // List all I2C devices
 					         i2c_scan();
@@ -270,7 +318,7 @@ uint8_t execute_single_command(char *s)
 							 list_all_tasks(); 
 							 break;
 					 case 3: // test nixies
-					         test_nixies = true;
+					         test_nixies = !test_nixies;
 							 break;	
 					 default: rval = ERR_NUM;
 							  break;
@@ -278,15 +326,15 @@ uint8_t execute_single_command(char *s)
 				 break;
 
 	   case 'w': // Set wheel-effect
-				if (num > 2)
-				rval = ERR_NUM;
-				else 
-				{
-					wheel_effect = num;
-					eeprom_write_byte(EEPARB_WHEEL,wheel_effect);
-				} // else				
-				break;
-	   
+				 if (num > 2)
+					rval = ERR_NUM;
+				 else
+				 {
+				     wheel_effect = num;
+					 eeprom_write_byte(EEPARB_WHEEL,wheel_effect);
+				 } // else
+				 break;	
+
 	   default: rval = ERR_CMD;
 				sprintf(s2,"ERR.CMD[%s]\n",s);
 				xputs(s2);

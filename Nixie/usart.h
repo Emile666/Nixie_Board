@@ -23,7 +23,7 @@
 #include <stdbool.h>
 
 #define USART_BUFLEN (20)
-#define BAUD         (38400)
+#define BAUD         (115200)
 #define MYUBRR       (((((F_CPU * 10) / (16L * BAUD)) + 5) / 10) - 1)
 
 #define TX_BUF_SIZE (30)

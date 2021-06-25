@@ -19,23 +19,11 @@
 // Dig.12 DHT22        (MISO) PB4 [15]    [16] PB5 (SCK)      TIME_MEAS Dig.13
 //                               -----USB----
 //                               Arduino NANO
-// $Id: Nixie.h,v 1.1 2016/05/07 09:37:27 Emile Exp $
-// $Log: Nixie.h,v $
-// Revision 1.1  2016/05/07 09:37:27  Emile
-// - Project restructure
-//
-// Revision 1.1.1.1  2016/05/07 08:50:25  Emile
-// - Initial version for 1st time check-in to CVS.
-//
-// Revision 1.2.0.0  2016/07/09 21:39:30  Ronald.
-// - Added PORTC Defines  
-//
 //-----------------------------------------------------------------------------
 #ifndef _Nixie_h
 #define _Nixie_h
 
-// Set to 1 to print sensor outputs
-#define DEBUG_SENSORS (1)
+#include "i2c.h"
 
 //------------------------
 // PORTB Defines
@@ -83,6 +71,7 @@
 #define RANDOM  (1) /* Color is selected random */
 #define DYNAMIC (2) /* Color is selected by seconds */
 #define FIXED   (3) /* Color is selected by fixed_rgb_colour */
+#define SET_WIT (4) /* acknowledgement for e0 response from esp8266 */
 
 //------------------------
 // Nixie Decimal Points
@@ -104,12 +93,79 @@
 #define S180_START_P (2)
 #define S180_GET_P   (3)
 
-//------------------------
-// Temp / Hum / mBar Calibration
-// Cal_Hum = 10 -> added 1% 
-//------------------------
-#define Cal_Hum (0)
+//-----------------------------------------------------------------------
+// States for esp8266_std in update_esp8266_time()
+//-----------------------------------------------------------------------
+#define ESP8266_INIT    (0)  /* Default state */
+#define ESP8266_UPDATE  (1)  /* Update time from ESP8266 NTP Server */
+#define ESP8266_RETRY   (2)  /* Retry getting a response from the ESP8266 */
 
-void set_nixie_timedate(uint8_t x, uint8_t y, char z);
+#define ESP8266_HOURS   (12) /* Time in hours between updates from ESP8266 */
+#define ESP8266_MINUTES (ESP8266_HOURS * 60)
+#define ESP8266_SECONDS ((uint16_t)ESP8266_HOURS * 3600)
+
+//-----------------------------------------------------------------------
+// States for ir_cmd_std in handle_ir_command()
+//-----------------------------------------------------------------------
+#define IR_CMD_IDLE      (0)
+#define IR_CMD_0         (1)
+#define IR_CMD_1         (2) /* Show version number for 5 seconds */
+#define IR_CMD_2         (3) /* Show last response from ESP8266 */
+#define IR_CMD_3         (4) /* Get Date & Time from ESP8266 NTP Server */
+#define IR_CMD_4         (5) /* Show DS3231 Temperature for 5 seconds */
+#define IR_CMD_5         (6) /* Set intensity of colors */
+#define IR_CMD_6         (7) /* Invert Blanking-Active signal */
+#define IR_CMD_7         (8) /* Enable Testpattern */
+#define IR_CMD_8         (9) /* Set blanking-begin time */
+#define IR_CMD_9        (10) /* Set blanking-end time */
+#define IR_CMD_HASH     (11) /* Show date & year for 10 seconds */
+#define IR_CMD_CURSOR   (12)
+#define IR_CMD_COL_CURSOR (13)
+
+//-----------------------------------------------------------------------
+// Definitions for numbering of Nixie Tubes
+//-----------------------------------------------------------------------
+#define POS0    (0) /* Left-most Nixie, typically displays MSB hours */
+#define POS1    (1) /* Typically displays LSB hours */
+#define POS2    (2) /* Typically displays MSB minutes */
+#define POS3    (3) /* Typically displays LSB minutes */
+#define POS4    (4) /* Typically displays MSB seconds */
+#define POS5    (5) /* Right-most Nixie, typically displays LSB seconds */
+
+//-----------------------------------------------------------------
+// Constants for ssd[] array with characters for 7-segment display
+//-----------------------------------------------------------------
+#define DIG_0      (0)
+#define DIG_1      (1)
+#define DIG_2      (2)
+#define DIG_3      (3)
+#define DIG_4      (4)
+#define DIG_5      (5)
+#define DIG_6      (6)
+#define DIG_7      (7)
+#define DIG_8      (8)
+#define DIG_9      (9)
+#define DIG_SPACE (10) /* decodes to Nixie off */
+
+uint32_t millis(void);
+void     delay_msec(uint16_t ms);
+void     set_rgb_colour(uint8_t color);
+void     check_and_set_summertime(Time p);
+void     dht22_task(void);
+void     bmp180_task(void);
+void     update_nixies(void);
+uint8_t  encode_to_bcd(uint8_t x);
+void     clear_nixie(uint8_t nr);
+void     ftest_nixies(void);
+void     fixed_random_rgb_colour(uint8_t s, bool rndm);
+bool     blanking_active(Time p);
+void	 dec_point_set(uint8_t dp);
+void	 dec_point_clr(uint8_t dp);
+void     display_task(void);
+void     set_nixie_timedate(uint8_t x, uint8_t y, char z);
+void     init_timer1(void);
+void     init_timer2(void);
+uint16_t tmr1_val(void);
+void     init_ports(void);
 
 #endif
