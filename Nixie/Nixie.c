@@ -14,7 +14,7 @@
 #include "bmp180.h"
 #include "eep.h"
 
-char          nixie_ver[] = "Nixie Old HW v0.30\n";
+char          nixie_ver[] = "Nixie Old HW v0.31\n";
 bool		  test_nixies = false;	    // S3 command / IR #9 command
 
 uint8_t       cnt_50usec  = 0;       // 50 usec. counter
@@ -32,7 +32,7 @@ uint8_t       blank_end_h     = 0;
 uint8_t       blank_end_m     = 0;
 
 uint8_t rgb_pattern = FIXED;		  // RGB color mode: [OFF, RANDOM, DYNAMIC, FIXED]
-uint8_t fixed_rgb_colour = CYAN;	  // RGB colour variable used in Nixie.c
+uint8_t fixed_rgb_colour = BLACK;	  // RGB colour variable used in Nixie.c
 
 uint8_t       wheel_effect    = 1;    // 0: none, 1: from 59->00, 2: every second/minute
 bool          display_time    = true; // true = hh:mm:ss is on display 
