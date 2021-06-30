@@ -14,7 +14,7 @@
 #include "bmp180.h"
 #include "eep.h"
 
-char          nixie_ver[] = "Nixie Old HW v0.31\n";
+char          nixie_ver[] = "Nixie Old HW v0.32\n";
 bool		  test_nixies = false;	    // S3 command / IR #9 command
 
 uint8_t       cnt_50usec  = 0;       // 50 usec. counter
@@ -677,16 +677,8 @@ void display_task(void)
 	if (test_nixies) 
 	{   // S3 command or IR 7 command (60 sec.)
 		ftest_nixies(); 
-		return;
 	} // if	
-	else if (blanking_active(p))
-	{
-	     nixie_bits = NIXIE_CLEAR_ALL;
-		 PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
-		 rgb_colour = BLACK;
-	} // else if
-	
-	if (show_date_IR == IR_SHOW_VER)
+	else if (show_date_IR == IR_SHOW_VER)
 	{	// Show version info
 		nixie_bits = time_arr[POS0];
 		nixie_bits <<= 4;
@@ -697,7 +689,7 @@ void display_task(void)
 		clear_nixie(1);
 		clear_nixie(2);
 		clear_nixie(6);
-		nixie_bits |= RIGHT_DP3;   // TODO
+		nixie_bits |= RIGHT_DP3;
 	} // if
 	else if (show_date_IR == IR_SHOW_ESP_STAT)
 	{	// Show response from ESP8266 NTP Server
@@ -732,10 +724,16 @@ void display_task(void)
 				default  : nixie_bits |= 0x000000F0; break;
 			} // switch
 		} // if
-		nixie_bits |= RIGHT_DP3;   // TODO
+		nixie_bits |= RIGHT_DP3;
 		clear_nixie(1);
 		clear_nixie(6);
         blink = !blink;   // toggle blinking
+	} // else if
+	else if (blanking_active(p))
+	{
+		nixie_bits = NIXIE_CLEAR_ALL;
+		PORTC &= ~(HUMIDITYSYMBOL | PRESSURESYMBOL | DEGREESYMBOL | LED_IN19A);
+		rgb_colour = BLACK;
 	} // else if
 	else switch (p.sec)
 	{
