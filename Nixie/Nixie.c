@@ -14,7 +14,7 @@
 #include "bmp180.h"
 #include "eep.h"
 
-char          nixie_ver[] = "Nixie Old HW v0.32\n";
+char          nixie_ver[] = "Nixie Old HW v0.33\n";
 bool		  test_nixies = false;	    // S3 command / IR #9 command
 
 uint8_t       cnt_50usec  = 0;       // 50 usec. counter
@@ -200,6 +200,7 @@ ISR (PCINT0_vect)
 void check_and_set_summertime(Time p)
 {
 	uint8_t        hr,day,lsun03,lsun10,dst_eep;
+	uint16_t       min;
     static uint8_t advance_time = 0;
 	static uint8_t revert_time  = 0;
 #ifdef DEBUG_SENSORS
@@ -215,17 +216,23 @@ void check_and_set_summertime(Time p)
 #endif
 		switch (advance_time)
 		{
-			case 0: if ((p.date == lsun03) && (p.hour == 2) && (p.min == 0))
-					{   // At 2:00 AM advance time to 3 AM, check for one minute
-						advance_time = 1;
+			case 0: if (p.date == lsun03)
+					{	// last Sunday in March
+						min = (uint16_t)p.hour * 60 + p.min; // convert to minutes
+						if (min < 120) dst_active = false;   // summertime not yet active
+						else if (min == 120)
+						{   // At 2:00 AM advance time to 3 AM, check for one minute
+							advance_time = 1; // goto next state
+						} // if
+						else dst_active = true; // min > 120
 					} // if
 					else if (p.date < lsun03) dst_active = false;
 					else if (p.date > lsun03) dst_active = true;
-					else if (p.hour < 2)      dst_active = false;
 					break;
 			case 1: // Now advance time, do this only once
-					ds3231_settime(3,0,p.sec); // Set time to 3:00, leave secs the same
-					advance_time = 2;
+					ds3231_settime(3,0,p.sec);          // Set time to 3:00, leave secs the same
+					eeprom_write_byte(EEPARB_DST,0x01); // set DST in eeprom
+					advance_time = 2;                   // goto next state
 					dst_active   = true;
 					break;
 			case 2: if (p.min > 0) advance_time = 0; // At 3:01:00 back to normal
@@ -242,16 +249,22 @@ void check_and_set_summertime(Time p)
 #endif
 		switch (revert_time)
 		{
-			case 0: if ((p.date == lsun10) && (p.hour == 3) && (p.min == 0))
-					{   // At 3:00 AM revert time back to 2 AM, check for one minute
-						revert_time = 1;
+			case 0: if (p.date == lsun10)
+					{	// last Sunday in October
+						min = (uint16_t)p.hour * 60 + p.min; // convert to minutes
+						if (min < 180) dst_active = true;    // summertime still active
+						else if (dst_active && (min == 180)) // only when dst is active
+						{   // At 3:00 AM revert time back to 2 AM, check for one minute
+							revert_time = 1; // goto next state
+						} // if
+						else dst_active = false; // min > 180
 					} // if
-					else if (p.date > lsun10) dst_active = false;
 					else if (p.date < lsun10) dst_active = true;
-					else if (p.hour < 3)      dst_active = true;
+					else if (p.date > lsun10) dst_active = false;
 					break;
 			case 1: // Now revert time, do this only once
-					ds3231_settime(2,0,p.sec); // Set time back to 2:00, leave secs the same
+					ds3231_settime(2,0,p.sec);          // Set time back to 2:00, leave secs the same
+					eeprom_write_byte(EEPARB_DST,0x00); // reset DST in eeprom
 					revert_time = 2;
 					dst_active  = false;
 					break;
@@ -261,8 +274,8 @@ void check_and_set_summertime(Time p)
 					break;
 		} // switch
 	} // else if
-	else if ((p.mon < 3) || (p.mon > 10)) dst_active = false;
-	else                                  dst_active = true; 
+	else if ((p.mon < 3) || (p.mon > 10)) dst_active = false; // January, February, November, December
+	else                                  dst_active = true;  // April until September
 
     //------------------------------------------------------------------------
     // If, for some reason, the clock was powered-off during the change to
